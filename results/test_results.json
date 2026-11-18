@@ -46,6 +46,52 @@
     }
    }
   },
+  "cnn_strict_intra_final": {
+   "price": {
+    "MAE": {
+     "mean": 2.7432718759563155,
+     "std": 0.0684672646939533
+    },
+    "RMSE": {
+     "mean": 3.9147571458975357,
+     "std": 0.06580343655182332
+    },
+    "pinball": {
+     "mean": 0.8982539496025351,
+     "std": 0.017051953242453333
+    },
+    "coverage": {
+     "mean": 0.7501141552511416,
+     "std": 0.02281753785833269
+    },
+    "width": {
+     "mean": 7.595671818673007,
+     "std": 0.433010201788056
+    }
+   },
+   "solar": {
+    "MAE": {
+     "mean": 2857.8326749647836,
+     "std": 121.74724272631552
+    },
+    "RMSE": {
+     "mean": 5547.49766126811,
+     "std": 185.2340699169588
+    },
+    "pinball": {
+     "mean": 955.4082594107862,
+     "std": 39.860077774499594
+    },
+    "coverage": {
+     "mean": 0.7133181126331811,
+     "std": 0.01763106409349617
+    },
+    "width": {
+     "mean": 6051.273529057845,
+     "std": 195.74263217508482
+    }
+   }
+  },
   "cnn_weather_future_intra_final": {
    "price": {
     "MAE": {
@@ -138,6 +184,52 @@
     }
    }
   },
+  "lstm_strict_intra_final": {
+   "price": {
+    "MAE": {
+     "mean": 2.5633167356142876,
+     "std": 0.10296366358588074
+    },
+    "RMSE": {
+     "mean": 3.5900722421753475,
+     "std": 0.1199083557493488
+    },
+    "pinball": {
+     "mean": 0.8488054063769216,
+     "std": 0.028193982480437908
+    },
+    "coverage": {
+     "mean": 0.7243531202435313,
+     "std": 0.03978353721994372
+    },
+    "width": {
+     "mean": 7.032191909797096,
+     "std": 0.5316545539961356
+    }
+   },
+   "solar": {
+    "MAE": {
+     "mean": 2137.315597590273,
+     "std": 33.431622531573545
+    },
+    "RMSE": {
+     "mean": 3914.056652685125,
+     "std": 68.94392943451612
+    },
+    "pinball": {
+     "mean": 711.0713591279791,
+     "std": 15.750721435465476
+    },
+    "coverage": {
+     "mean": 0.715144596651446,
+     "std": 0.017553037770382026
+    },
+    "width": {
+     "mean": 5313.9826482701,
+     "std": 233.07737099538988
+    }
+   }
+  },
   "lstm_weather_future_intra_final": {
    "price": {
     "MAE": {
@@ -227,6 +319,52 @@
     "width": {
      "mean": 2789.8672079611147,
      "std": 57.827798402049694
+    }
+   }
+  },
+  "patchtst_strict_intra_final": {
+   "price": {
+    "MAE": {
+     "mean": 2.676653006913505,
+     "std": 0.0939906462007579
+    },
+    "RMSE": {
+     "mean": 3.7415983226455034,
+     "std": 0.08458808775676244
+    },
+    "pinball": {
+     "mean": 0.8705105112965535,
+     "std": 0.030142833308370608
+    },
+    "coverage": {
+     "mean": 0.7404490106544901,
+     "std": 0.013435231928779379
+    },
+    "width": {
+     "mean": 7.202356259444367,
+     "std": 0.1535192544026157
+    }
+   },
+   "solar": {
+    "MAE": {
+     "mean": 2157.4317659853596,
+     "std": 14.419134863407445
+    },
+    "RMSE": {
+     "mean": 3977.5820987268976,
+     "std": 38.08655794668083
+    },
+    "pinball": {
+     "mean": 702.1278017774463,
+     "std": 8.777736491874693
+    },
+    "coverage": {
+     "mean": 0.7256468797564688,
+     "std": 0.019032647196623825
+    },
+    "width": {
+     "mean": 5599.067360976221,
+     "std": 75.23096646548636
     }
    }
   },
@@ -464,6 +602,52 @@
     }
    }
   },
+  "cnn_strict_intra_final": {
+   "price": {
+    "MAE": {
+     "mean": 3.7991057722080424,
+     "std": 0.15688122612665825
+    },
+    "RMSE": {
+     "mean": 5.302468862956798,
+     "std": 0.13760938451907506
+    },
+    "pinball": {
+     "mean": 1.2580041048662232,
+     "std": 0.03346667841437248
+    },
+    "coverage": {
+     "mean": 0.6452690972222223,
+     "std": 0.013451780561325729
+    },
+    "width": {
+     "mean": 9.174111181139915,
+     "std": 0.4742795041119006
+    }
+   },
+   "solar": {
+    "MAE": {
+     "mean": 4212.400530195556,
+     "std": 130.72627990138503
+    },
+    "RMSE": {
+     "mean": 7659.075714360752,
+     "std": 191.15439421968912
+    },
+    "pinball": {
+     "mean": 1477.791167179402,
+     "std": 50.3646608299955
+    },
+    "coverage": {
+     "mean": 0.6268663194444445,
+     "std": 0.019668020351491473
+    },
+    "width": {
+     "mean": 6551.391936618137,
+     "std": 283.95489429568426
+    }
+   }
+  },
   "cnn_weather_future_intra_final": {
    "price": {
     "MAE": {
@@ -556,6 +740,52 @@
     }
    }
   },
+  "lstm_strict_intra_final": {
+   "price": {
+    "MAE": {
+     "mean": 4.628559776105533,
+     "std": 0.71675479153631
+    },
+    "RMSE": {
+     "mean": 6.447266417434924,
+     "std": 0.9991184897690376
+    },
+    "pinball": {
+     "mean": 1.5676330399240517,
+     "std": 0.26611711932250964
+    },
+    "coverage": {
+     "mean": 0.5681423611111112,
+     "std": 0.08922893332027323
+    },
+    "width": {
+     "mean": 9.001135693450257,
+     "std": 0.7766665480999001
+    }
+   },
+   "solar": {
+    "MAE": {
+     "mean": 2968.197465957881,
+     "std": 72.33214955192207
+    },
+    "RMSE": {
+     "mean": 5243.5269491193,
+     "std": 161.34723737821818
+    },
+    "pinball": {
+     "mean": 1083.0706291524268,
+     "std": 33.200586732871976
+    },
+    "coverage": {
+     "mean": 0.5932291666666666,
+     "std": 0.05675838851237758
+    },
+    "width": {
+     "mean": 5635.019404535086,
+     "std": 356.05359860661406
+    }
+   }
+  },
   "lstm_weather_future_intra_final": {
    "price": {
     "MAE": {
@@ -645,6 +875,52 @@
     "width": {
      "mean": 3161.6180297523547,
      "std": 124.30209831136546
+    }
+   }
+  },
+  "patchtst_strict_intra_final": {
+   "price": {
+    "MAE": {
+     "mean": 3.8582771791877377,
+     "std": 0.48642910337173967
+    },
+    "RMSE": {
+     "mean": 5.305035817413385,
+     "std": 0.633031830837241
+    },
+    "pinball": {
+     "mean": 1.258026567556408,
+     "std": 0.1614911580116398
+    },
+    "coverage": {
+     "mean": 0.6840277777777778,
+     "std": 0.04788791942869013
+    },
+    "width": {
+     "mean": 9.585420024803263,
+     "std": 0.268237227502783
+    }
+   },
+   "solar": {
+    "MAE": {
+     "mean": 2839.8349562842645,
+     "std": 45.25088977527017
+    },
+    "RMSE": {
+     "mean": 4994.800503850544,
+     "std": 69.02275644019623
+    },
+    "pinball": {
+     "mean": 981.4625536170194,
+     "std": 30.112380104792614
+    },
+    "coverage": {
+     "mean": 0.6452256944444444,
+     "std": 0.02446169158064292
+    },
+    "width": {
+     "mean": 6121.219985240884,
+     "std": 394.1642265273605
     }
    }
   },
@@ -837,18 +1113,24 @@
  },
  "val_loss": {
   "cnn_future_intra_final": 0.04302839810649554,
+  "cnn_strict_intra_final": 0.09761457145214081,
   "cnn_weather_future_intra_final": 0.043033373852570854,
   "lstm_future_intra_final": 0.04387517273426056,
+  "lstm_strict_intra_final": 0.08175350725650787,
   "lstm_weather_future_intra_final": 0.044714633375406265,
   "patchtst_future_intra_final": 0.042048681527376175,
+  "patchtst_strict_intra_final": 0.08236035456260045,
   "patchtst_weather_future_intra_final": 0.04245713725686073
  },
  "val_loss_std": {
   "cnn_future_intra_final": 0.0004136965677241432,
+  "cnn_strict_intra_final": 0.001509647862047726,
   "cnn_weather_future_intra_final": 0.00041383532649087414,
   "lstm_future_intra_final": 0.0007549646756377509,
+  "lstm_strict_intra_final": 0.0015257781530781153,
   "lstm_weather_future_intra_final": 0.0010855575203836227,
   "patchtst_future_intra_final": 0.0007780127538590633,
+  "patchtst_strict_intra_final": 0.0011559670669238852,
   "patchtst_weather_future_intra_final": 0.0006070783518479792
  },
  "groups": {
@@ -856,6 +1138,11 @@
    "cnn_future_intra_final_s0",
    "cnn_future_intra_final_s1",
    "cnn_future_intra_final_s2"
+  ],
+  "cnn_strict_intra_final": [
+   "cnn_strict_intra_final_s0",
+   "cnn_strict_intra_final_s1",
+   "cnn_strict_intra_final_s2"
   ],
   "cnn_weather_future_intra_final": [
    "cnn_weather_future_intra_final_s0",
@@ -867,6 +1154,11 @@
    "lstm_future_intra_final_s1",
    "lstm_future_intra_final_s2"
   ],
+  "lstm_strict_intra_final": [
+   "lstm_strict_intra_final_s0",
+   "lstm_strict_intra_final_s1",
+   "lstm_strict_intra_final_s2"
+  ],
   "lstm_weather_future_intra_final": [
    "lstm_weather_future_intra_final_s0",
    "lstm_weather_future_intra_final_s1",
@@ -877,6 +1169,11 @@
    "patchtst_future_intra_final_s1",
    "patchtst_future_intra_final_s2"
   ],
+  "patchtst_strict_intra_final": [
+   "patchtst_strict_intra_final_s0",
+   "patchtst_strict_intra_final_s1",
+   "patchtst_strict_intra_final_s2"
+  ],
   "patchtst_weather_future_intra_final": [
    "patchtst_weather_future_intra_final_s0",
    "patchtst_weather_future_intra_final_s1",
@@ -885,15 +1182,25 @@
  },
  "best_runs": {
   "cnn_future_intra_final": "cnn_future_intra_final_s1",
+  "cnn_strict_intra_final": "cnn_strict_intra_final_s0",
   "cnn_weather_future_intra_final": "cnn_weather_future_intra_final_s0",
   "lstm_future_intra_final": "lstm_future_intra_final_s2",
+  "lstm_strict_intra_final": "lstm_strict_intra_final_s1",
   "lstm_weather_future_intra_final": "lstm_weather_future_intra_final_s2",
   "patchtst_future_intra_final": "patchtst_future_intra_final_s0",
+  "patchtst_strict_intra_final": "patchtst_strict_intra_final_s0",
   "patchtst_weather_future_intra_final": "patchtst_weather_future_intra_final_s1"
  },
- "winner": "patchtst_future_intra_final",
- "winner_run": "patchtst_future_intra_final_s0",
+ "winner": "lstm_strict_intra_final",
+ "winner_run": "lstm_strict_intra_final_s1",
+ "winner_allfc": "patchtst_future_intra_final",
+ "winner_allfc_run": "patchtst_future_intra_final_s0",
  "ranking": [
+  "lstm_strict_intra_final",
+  "patchtst_strict_intra_final",
+  "cnn_strict_intra_final"
+ ],
+ "ranking_allfc": [
   "patchtst_future_intra_final",
   "patchtst_weather_future_intra_final",
   "cnn_future_intra_final",

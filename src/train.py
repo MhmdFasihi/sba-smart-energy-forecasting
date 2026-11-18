@@ -1,7 +1,7 @@
 """Train LSTM / 1D-CNN / PatchTST with pinball loss for the day-ahead task (see windows.py).
 Selection uses validation only; test predictions are saved for the single final evaluation (final_eval.py).
 
-Run:  python src/train.py --model cnn [--weather] [--future] [--intrahour] [--epochs 50] [--seed 0]
+Run:  python src/train.py --model cnn [--weather] [--future|--strict] [--intrahour] [--epochs 50] [--seed 0]
       [--lr 1e-3] [--dropout 0.1] [--hidden 128] [--tag name]
 """
 import argparse
@@ -34,13 +34,13 @@ def predict(model, X: np.ndarray, F: np.ndarray, dev, bs: int = 256) -> np.ndarr
 
 
 def run_name(args) -> str:
-    return (f"{args.model}{'_weather' if args.weather else ''}{'_future' if args.future else ''}"
+    return (f"{args.model}{'_weather' if args.weather else ''}{'_strict' if args.strict else '_future' if args.future else ''}"
             f"{'_intra' if args.intrahour else ''}{('_' + args.tag) if args.tag else ''}_s{args.seed}")
 
 
 def feature_sets(args):
     feats = W.BASE + (W.WEATHER if args.weather else []) + (W.INTRAHOUR if args.intrahour else [])
-    return feats, (W.FUTURE if args.future else [])
+    return feats, (W.STRICT_FUTURE if args.strict else W.FUTURE if args.future else [])
 
 
 def model_kwargs(args) -> dict:
@@ -55,7 +55,7 @@ def model_kwargs(args) -> dict:
 
 
 def scaler_path(args):
-    tag = f"{'w' if args.weather else 'b'}{'f' if args.future else ''}{'i' if args.intrahour else ''}"
+    tag = f"{'w' if args.weather else 'b'}{'s' if args.strict else 'f' if args.future else ''}{'i' if args.intrahour else ''}"
     return W.ROOT / "models" / f"scaler_{tag}.joblib"
 
 
@@ -118,6 +118,7 @@ def parser() -> argparse.ArgumentParser:
     p.add_argument("--model", choices=["lstm", "cnn", "patchtst"], required=True)
     p.add_argument("--weather", action="store_true", help="add DWD/Open-Meteo observations to the inputs")
     p.add_argument("--future", action="store_true", help="add known-future inputs of the target day")
+    p.add_argument("--strict", action="store_true", help="known-future inputs = calendar + load forecast only (noon-safe)")
     p.add_argument("--intrahour", action="store_true", help="add the within-hour 15-min price range")
     p.add_argument("--epochs", type=int, default=50)
     p.add_argument("--patience", type=int, default=5)

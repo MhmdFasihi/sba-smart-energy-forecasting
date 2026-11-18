@@ -24,6 +24,10 @@ WEATHER = ["radiation", "sunshine", "cloud_cover", "temp"]
 INTRAHOUR = ["price_range_q"]                         # max-min of the four 15-min prices in the hour (ablation)
 DAYAHEAD_FC = ["fc_solar", "fc_wind_onshore", "fc_load"]   # official SMARD forecasts for the target day
 FUTURE = CALENDAR + DAYAHEAD_FC                       # known-future inputs of the target hours
+# "noon-safe" subset: calendar + the load forecast. SMARD manual (04/2026): the TSOs must deliver the day-ahead load forecast
+# two hours before the day-ahead exchange closes (before 12:00), but the wind/solar day-ahead forecasts only "by 18:00 of
+# the previous day", so their vintage at 12:00 is not known. The strict set avoids that timing risk.
+STRICT_FUTURE = CALENDAR + ["fc_load"]
 SPLITS = {"train": ("2019-01-01", "2024-12-31"), "val": ("2025-01-01", "2025-12-31"), "test": ("2026-01-01", None)}
 
 

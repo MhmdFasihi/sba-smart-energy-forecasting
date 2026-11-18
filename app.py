@@ -104,7 +104,8 @@ with st.sidebar:
     mode = st.segmented_control("Mode", ["Demo", "Real tomorrow"], default="Demo", key="mode",
                                 help="Demo: pick a past day and compare forecast and reality. Real tomorrow: forecast the "
                                      "next day from the newest SMARD files in data/.")
-    ordered = sorted(groups, key=lambda g: results["val_loss"][g])
+    # primary (noon-safe) models first, the all-forecast upper-bound models after them; each sorted by validation loss
+    ordered = sorted(groups, key=lambda g: ("_future" in g, results["val_loss"][g]))
     names = {g: label(g) + ("  (validation winner)" if g == results["winner"] else "") for g in ordered}
     group = st.selectbox("Model", ordered, format_func=names.get, help="Sorted by validation pinball loss.")
     run = groups[group]
@@ -142,6 +143,20 @@ x = pd.date_range(d1, periods=24, freq="h")
 st.title("Smart energy forecasting")
 st.caption(f"Day-ahead forecast for **{d1:%A, %d %B %Y}**, made at {origin:%d %b %H:%M} (auction cut-off), "
            f"model: {label(group)}, run `{run}`.")
+
+if "_future" in group:
+    st.warning("This model also uses the official day-ahead wind and solar forecasts of the target day. Their version available at "
+               "12:00 is not verified, so its scores are an upper bound for a real noon forecast.", icon=":material/warning:")
+else:
+    _t, _naive = results["test"], [b for b in results["test"] if b.startswith("naive")]
+    _msg = []
+    for _k, _n in (("price", "price"), ("solar", "solar")):
+        _best = min((b for b in _naive if _k in _t[b]), key=lambda b: _t[b][_k]["pinball"]["mean"])
+        _m, _b = _t[group][_k]["pinball"]["mean"], _t[_best][_k]["pinball"]["mean"]
+        _msg.append(f"{_n}: {'better' if _m < _b else 'not better'} than the best naive baseline on test pinball loss "
+                    f"({_m:.3g} vs {_b:.3g})")
+    st.info("Noon-safe model (only inputs known at 12:00). On the 2026 test year, " + "; ".join(_msg) + ".",
+            icon=":material/info:")
 
 tab_over, tab_cmp, tab_plan, tab_about = st.tabs(
     [":material/show_chart: Forecast", ":material/leaderboard: Model comparison",

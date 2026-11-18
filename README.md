@@ -7,6 +7,11 @@ assistant and a Streamlit dashboard.
 **Protocol:** at 12:00 of day D (auction cut-off) forecast day D+1 from the last 168 h; known-future inputs of the
 target day (calendar, official SMARD day-ahead forecasts) are used. Train 2019-2024, validation 2025, test 2026 (scored once).
 
+**Main result (see `results/REPORT.md`):** only the *noon-safe* models (inputs verifiably known at 12:00: calendar +
+load forecast) are the primary result, and on the 2026 test year they do **not** beat the naive baselines. The *all-forecast*
+models (which also use the official day-ahead wind/solar forecasts) are much better, but those forecasts may not exist at
+12:00 (SMARD manual: delivered "by 18:00 of the previous day"), so they are an upper bound.
+
 ## Setup (Python 3.10-3.12)
 ```
 python -m venv .venv && source .venv/bin/activate
@@ -28,6 +33,8 @@ python src/data_build.py               # -> data/dataset_hourly.csv
 python src/run_experiments.py ablate   # validation-only input ablation (seed 0)
 python src/run_experiments.py tune     # lr x dropout grid per model
 python src/run_experiments.py final    # 3 seeds x 3 models x with/without weather
+python src/run_experiments.py strict_check   # noon-safe inputs (calendar + load forecast only), seed 0, validation
+python src/run_experiments.py strict_final   # 3 seeds x 3 models with noon-safe inputs (primary result)
 python src/final_eval.py               # scores the test set ONCE (needs --force to repeat), writes results/REPORT.md
 python src/calibrate.py                # post-hoc conformal widening of the bands (fitted on validation only)
 python src/final_eval.py --force       # puts the recalibration table into the report

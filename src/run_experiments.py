@@ -23,7 +23,8 @@ PLAN = R / "experiment_plan.json"      # decisions taken from validation (writte
 
 
 def name_of(model, weather=False, future=False, intra=False, tag="", seed=0) -> str:
-    return (f"{model}{'_weather' if weather else ''}{'_future' if future else ''}{'_intra' if intra else ''}"
+    """future: False | True (all official forecasts) | "strict" (calendar + load forecast only)."""
+    return (f"{model}{'_weather' if weather else ''}{'_strict' if future == 'strict' else '_future' if future else ''}{'_intra' if intra else ''}"
             f"{('_' + tag) if tag else ''}_s{seed}")
 
 
@@ -37,7 +38,7 @@ def train(model, weather=False, future=False, intra=False, tag="", seed=0, lr=1e
     if val_loss(name) is None:
         cmd = [sys.executable, str(ROOT / "src" / "train.py"), "--model", model, "--seed", str(seed),
                "--lr", str(lr), "--dropout", str(dropout), "--hidden", str(hidden)]
-        cmd += (["--weather"] if weather else []) + (["--future"] if future else []) + (["--intrahour"] if intra else [])
+        cmd += (["--weather"] if weather else []) + (["--strict"] if future == "strict" else ["--future"] if future else []) + (["--intrahour"] if intra else [])
         cmd += (["--tag", tag] if tag else [])
         with open(R / f"log_{name}.txt", "w") as log:
             subprocess.run(cmd, stdout=log, stderr=subprocess.STDOUT, check=True, cwd=ROOT)
@@ -88,5 +89,22 @@ def final():
         train(m, w, fut, intra, tag="final", seed=seed, lr=hp["lr"], dropout=hp["dropout"])
 
 
+def strict(stage: str):
+    """Noon-safe inputs (calendar + load forecast). Added after the timing question about the wind/solar forecasts.
+    Rule fixed BEFORE looking at the results: the strict models are the primary result; the models with all official
+    forecasts are the upper bound. Hyper-parameters are taken from the 'tune' stage (not re-tuned). Seed 0 first
+    (validation check), then 3 seeds without weather."""
+    plan = load_plan()
+    intra = plan["use_intrahour"]
+    seeds = [0] if stage == "check" else SEEDS
+    for seed, m in product(seeds, MODELS):
+        hp = plan["tuned"][m]
+        v = train(m, False, "strict", intra, tag="strictcheck" if stage == "check" else "final", seed=seed,
+                  lr=hp["lr"], dropout=hp["dropout"])
+        if stage == "check":
+            save_plan(strict_check=load_plan().get("strict_check", {}) | {m: v})
+
+
 if __name__ == "__main__":
-    {"ablate": ablate, "tune": tune, "final": final}[sys.argv[1]]()
+    {"ablate": ablate, "tune": tune, "final": final, "strict_check": lambda: strict("check"),
+     "strict_final": lambda: strict("final")}[sys.argv[1]]()

@@ -29,11 +29,18 @@ LABEL = {"lstm": "LSTM", "cnn": "CNN", "patchtst": "PatchTST", "naive_lastday": 
          "naive_lastweek": "naive last week", "naive_dayD": "naive day D (price only)", "smard_fc_solar": "SMARD official solar forecast"}
 
 
+SAFE, ALLFC = "noon-safe", "all fc"      # known-future inputs: calendar + load forecast  |  + official wind/solar forecasts
+
+
+def family(group: str) -> str:
+    return SAFE if "_strict" in group else ALLFC if "_future" in group else ""
+
+
 def label(group: str) -> str:
     if group in LABEL:
         return LABEL[group]
     model = group.split("_")[0]
-    return LABEL[model] + (" + weather" if "_weather" in group else "")
+    return LABEL[model] + (" + weather" if "_weather" in group else "") + (f" [{family(group)}]" if family(group) else "")
 
 
 def group_of(run: str) -> str:
@@ -115,7 +122,9 @@ def main(force: bool):
                         "val_loss": float(np.mean([x[0]["best_val_loss"] for x in loaded])),
                         "val_loss_std": float(np.std([x[0]["best_val_loss"] for x in loaded]))}
     # winner = lowest mean validation pinball loss (sorted-quantile loss used for early stopping)
-    ranked = sorted(per_group, key=lambda g: per_group[g]["val_loss"])
+    # primary result = noon-safe family (rule fixed before seeing its results); all-fc family = upper bound
+    ranked = sorted((g for g in per_group if family(g) == SAFE), key=lambda g: per_group[g]["val_loss"])
+    ranked_all = sorted((g for g in per_group if family(g) == ALLFC), key=lambda g: per_group[g]["val_loss"])
     winner = ranked[0]
     vl = lambda r: json.load(open(R / f"val_{r}.json"))["best_val_loss"]
     best_runs = {g: min(runs, key=vl) for g, runs in groups.items()}   # best seed per group (by validation)
@@ -129,11 +138,11 @@ def main(force: bool):
     result = {"val": val, "test": test, "val_loss": {g: per_group[g]["val_loss"] for g in per_group},
               "val_loss_std": {g: per_group[g]["val_loss_std"] for g in per_group},
               "groups": {g: per_group[g]["runs"] for g in per_group}, "best_runs": best_runs, "winner": winner,
-              "winner_run": best_run,
-              "ranking": ranked}
+              "winner_run": best_run, "winner_allfc": ranked_all[0], "winner_allfc_run": best_runs[ranked_all[0]],
+              "ranking": ranked, "ranking_allfc": ranked_all}
     out_json.write_text(json.dumps(result, indent=1))
 
-    order = list(base) + sorted(per_group, key=lambda g: (g.split("_")[0], "_weather" in g))
+    order = list(base) + sorted(per_group, key=lambda g: (g.split("_")[0], family(g) != SAFE, "_weather" in g))
     cfg_w, res_w, d_w, sc_w, cols_w, z_w = load_run(best_run, cache)
 
     # ---- plots (test) ----
@@ -188,6 +197,8 @@ def main(force: bool):
 def write_reports(res: dict, plan: dict, order: list[str], monthly: list, best_run: str, example_date):
     val, test, winner = res["val"], res["test"], res["winner"]
     nets = [g for g in order if g in res["groups"]]
+    fams = [(SAFE, [g for g in nets if family(g) == SAFE]), (ALLFC, [g for g in nets if family(g) == ALLFC])]
+    sn = fams[0][1]
     n_seeds = len(next(iter(res["groups"].values())))
     zt = np.load(R / f"pred_{best_run}.npz")
     n_test = len(zt["test"])
@@ -195,7 +206,7 @@ def write_reports(res: dict, plan: dict, order: list[str], monthly: list, best_r
     base_names = [g for g in order if g not in nets]
     best_naive = {t: min((b for b in base_names if t in test[b] and b.startswith("naive")),
                          key=lambda b: test[b][t]["pinball"]["mean"]) for t in W.TARGETS}
-    rank_test = {t: sorted(nets, key=lambda g: test[g][t]["pinball"]["mean"]) for t in W.TARGETS}
+    rank_test = {t: sorted(sn, key=lambda g: test[g][t]["pinball"]["mean"]) for t in W.TARGETS}
     ranked = res["ranking"]
     test_rank_winner = {t: rank_test[t].index(winner) + 1 for t in W.TARGETS}
 
@@ -214,7 +225,9 @@ def write_reports(res: dict, plan: dict, order: list[str], monthly: list, best_r
       "price is built from the native 15-minute day-ahead prices (hourly mean); weather from DWD observations "
       "(Open-Meteo for the last weeks, same time convention). Split: train 2019-2024, validation 2025, "
       f"test 2026-01-01 to {last_day} ({n_test} forecast days). "
-      f"Each model is trained with {n_seeds} seeds (mean ± std over seeds).")
+      f"Each model is trained with {n_seeds} seeds (mean ± std over seeds). Two input families are reported: **[noon-safe]** = "
+      "calendar + the day-ahead load forecast of the target day as known-future inputs (the primary result), and **[all fc]** = "
+      "additionally the official day-ahead wind and solar forecasts (an upper bound, see the timing caveat).")
     A("")
     A("## Protocol and model selection (validation only)")
     abl = plan["ablation"]
@@ -224,12 +237,21 @@ def write_reports(res: dict, plan: dict, order: list[str], monthly: list, best_r
       f"+ within-hour 15-min price range {fam(0,1,1):.4f}. Decision: known-future inputs (official SMARD day-ahead solar / wind / "
       f"load forecasts and calendar of the target day) {'used' if plan['use_future'] else 'not used'}; "
       f"15-min range feature {'used' if plan['use_intrahour'] else 'not used'}.")
+    sc_ = plan.get("strict_check")
+    if sc_:
+        A(f"- Timing check (added later, seed 0, same hyper-parameters): with only the noon-safe known inputs (calendar + load forecast) "
+          f"the validation loss is {float(np.mean(list(sc_.values()))):.4f}, i.e. about the same as without any known-future input "
+          f"({fam(0,0,0):.4f}) and far above the {fam(0,1,1):.4f} with the wind/solar forecasts. The whole gain of the known-future inputs "
+          "therefore comes from the official wind and solar forecasts, whose vintage at 12:00 is not verified (see Limitations). "
+          "Rule fixed before the strict models were trained: the noon-safe models are the primary result, the all-forecast models an upper bound.")
     tuned = plan["tuned"]
     A("- Hyper-parameter grid (learning rate × dropout, validation loss, seed 0): " + "; ".join(
         f"{label(m)}: lr {tuned[m]['lr']:g}, dropout {tuned[m]['dropout']:g}" for m in tuned) + ".")
-    A(f"- Selection: lowest mean validation pinball loss over seeds → **{label(winner)}** "
+    wa = res["winner_allfc"]
+    A(f"- Selection (primary, noon-safe family): lowest mean validation pinball loss over seeds → **{label(winner)}** "
       f"({res['val_loss'][winner]:.4f} ± {res['val_loss_std'][winner]:.4f}); next: " + ", ".join(
-          f"{label(g)} {res['val_loss'][g]:.4f}" for g in ranked[1:3]) + ". "
+          f"{label(g)} {res['val_loss'][g]:.4f}" for g in ranked[1:3]) + f". Best of the all-forecast family (upper bound): "
+      f"{label(wa)} ({res['val_loss'][wa]:.4f} ± {res['val_loss_std'][wa]:.4f}). "
       "The test set was scored once afterwards (`final_eval.py` refuses to run twice without `--force`) and was not used for any choice. "
       f"The app default is the best seed of the winner (`{best_run}`).")
     A("")
@@ -242,25 +264,29 @@ def write_reports(res: dict, plan: dict, order: list[str], monthly: list, best_r
       "independently of the values); monthly errors: `test_mae_by_month.csv`.)")
     A("")
     A("## Findings")
-    for t, unit in (("price", "price"), ("solar", "solar")):
-        beat = [g for g in nets if p(g, t) < p(best_naive[t], t)]
-        A(f"- {unit.capitalize()}: {len(beat)} of {len(nets)} neural variants beat the best naive baseline "
-          f"({label(best_naive[t])}, pinball {p(best_naive[t], t):.3f}) on test pinball loss; "
-          f"best variant {label(rank_test[t][0])} ({p(rank_test[t][0], t):.3f}), worst {label(rank_test[t][-1])} ({p(rank_test[t][-1], t):.3f}).")
+    for fname, fnets in fams:
+        for t in W.TARGETS:
+            beat = [g for g in fnets if p(g, t) < p(best_naive[t], t)]
+            rk = sorted(fnets, key=lambda g: p(g, t))
+            A(f"- [{fname}] {t.capitalize()}: {len(beat)} of {len(fnets)} neural variants beat the best naive baseline "
+              f"({label(best_naive[t])}, pinball {p(best_naive[t], t):.3f}) on test pinball loss; "
+              f"best variant {label(rk[0])} ({p(rk[0], t):.3f}), worst {label(rk[-1])} ({p(rk[-1], t):.3f}).")
     sm = test["smard_fc_solar"]["solar"]
-    best_solar_mae = min(nets, key=lambda g: test[g]["solar"]["MAE"]["mean"])
-    best_solar_pin = min(nets, key=lambda g: test[g]["solar"]["pinball"]["mean"])
-    beats = test[best_solar_pin]["solar"]["pinball"]["mean"] < sm["pinball"]["mean"]
-    A(f"- Official SMARD day-ahead solar forecast (benchmark, its band comes from training residuals): MAE {sm['MAE']['mean']:.0f}, "
-      f"pinball {sm['pinball']['mean']:.0f}. Best neural solar MAE: {label(best_solar_mae)} {test[best_solar_mae]['solar']['MAE']['mean']:.0f}; "
-      f"best neural solar pinball: {label(best_solar_pin)} {test[best_solar_pin]['solar']['pinball']['mean']:.0f} → "
-      + ("the best neural model beats the official forecast on pinball." if beats else
-         "no neural model beats the official forecast on solar, although it is one of their inputs."))
-    for t in W.TARGETS:
+    for fname, fnets in fams:
+        best_solar_mae = min(fnets, key=lambda g: test[g]["solar"]["MAE"]["mean"])
+        best_solar_pin = min(fnets, key=lambda g: test[g]["solar"]["pinball"]["mean"])
+        beats = test[best_solar_pin]["solar"]["pinball"]["mean"] < sm["pinball"]["mean"]
+        A(f"- [{fname}] Official SMARD day-ahead solar forecast (benchmark, its band comes from training residuals): MAE {sm['MAE']['mean']:.0f}, "
+          f"pinball {sm['pinball']['mean']:.0f}. Best neural solar MAE: {label(best_solar_mae)} {test[best_solar_mae]['solar']['MAE']['mean']:.0f}; "
+          f"best neural solar pinball: {label(best_solar_pin)} {test[best_solar_pin]['solar']['pinball']['mean']:.0f} → "
+          + ("the best neural model beats the official forecast on pinball." if beats else
+             "no neural model beats the official forecast on solar."))
+    for fname, fnets in fams:
+      for t in W.TARGETS:
         parts = []
         for m in ("lstm", "cnn", "patchtst"):
-            a = next((g for g in nets if g.split("_")[0] == m and "_weather" not in g), None)
-            b = next((g for g in nets if g.split("_")[0] == m and "_weather" in g), None)
+            a = next((g for g in fnets if g.split("_")[0] == m and "_weather" not in g), None)
+            b = next((g for g in fnets if g.split("_")[0] == m and "_weather" in g), None)
             if a and b:
                 da, db = test[a][t]["pinball"], test[b][t]["pinball"]
                 rel = (db["mean"] - da["mean"]) / da["mean"] * 100
@@ -268,9 +294,10 @@ def write_reports(res: dict, plan: dict, order: list[str], monthly: list, best_r
                 nd = 3 if t == "price" else 0
                 parts.append(f"{label(m)} {da['mean']:.{nd}f}→{db['mean']:.{nd}f} "
                              f"({rel:+.1f} %, {'larger than' if clear else 'within'} seed noise)")
-        A(f"- Weather effect on {t} pinball (without → with weather): " + "; ".join(parts) + ".")
-    A(f"- Validation winner {label(winner)} ranks {test_rank_winner['price']} of {len(nets)} on test price pinball and "
-      f"{test_rank_winner['solar']} of {len(nets)} on test solar pinball; ranks among top models are close and rest on {n_seeds} seeds.")
+        if parts:
+            A(f"- [{fname}] Weather effect on {t} pinball (without → with weather): " + "; ".join(parts) + ".")
+    A(f"- Validation winner {label(winner)} ranks {test_rank_winner['price']} of {len(sn)} noon-safe models on test price pinball and "
+      f"{test_rank_winner['solar']} of {len(sn)} on test solar pinball; ranks among top models are close and rest on {n_seeds} seeds.")
     covs = {t: [p(g, t, "coverage") for g in nets] for t in W.TARGETS}
     A(f"- Band calibration (target 0.80): price coverage {min(covs['price']):.2f}-{max(covs['price']):.2f}, solar "
       f"{min(covs['solar']):.2f}-{max(covs['solar']):.2f}.")
@@ -282,7 +309,7 @@ def write_reports(res: dict, plan: dict, order: list[str], monthly: list, best_r
     A(f"- Calibration: coverage was already below the 0.80 target on validation (price {min(vcov['price']):.2f}-{max(vcov['price']):.2f}, "
       f"solar {min(vcov['solar']):.2f}-{max(vcov['solar']):.2f}) and is lower on test (price {min(covs['price']):.2f}-{max(covs['price']):.2f}, "
       f"solar {min(covs['solar']):.2f}-{max(covs['solar']):.2f}): the bands are overconfident, most for price. "
-      "No recalibration (e.g. conformal prediction on the validation year) was applied.")
+      "The table above uses the raw bands; a post-hoc recalibration on the validation year is shown in the next section.")
     A("")
     cal_path = R / "calibration.json"
     if cal_path.exists():
@@ -310,7 +337,8 @@ def write_reports(res: dict, plan: dict, order: list[str], monthly: list, best_r
           "prices are less like 2025 than a constant widening can absorb (distribution shift); this was not investigated further.")
         A("")
     A("## Deviations from the guide")
-    A("- Day-ahead protocol (12:00 cut-off) instead of forecasting from midnight; known-future inputs added (see ablation).")
+    A("- Day-ahead protocol (12:00 cut-off) instead of forecasting from midnight; known-future inputs added (see ablation); the "
+      "primary result uses only the inputs verifiably available at noon (calendar + load forecast).")
     A("- PatchTST is a native PyTorch implementation, because the neuralforecast version is univariate (no exogenous inputs).")
     A("- CNN uses kernel 4 (dilations 1-32, receptive field 190 h) so the last step sees the whole 168 h week, 6 layers "
       "as in the guide but **128 filters** (not the guide's 64): all three models share one width setting (128 = LSTM units / "
@@ -325,10 +353,15 @@ def write_reports(res: dict, plan: dict, order: list[str], monthly: list, best_r
     A(f"- {n_seeds} seeds and one split; differences of a few percent between models are within noise.")
     A("- Weather was trained on observations, not forecasts, so the solar gain would be smaller in real use (guide section 9). "
       "The last weeks of weather come from Open-Meteo (modelled values), not DWD.")
-    A("- Timing caveat for the known-future inputs: SMARD stores one value per hour of the official day-ahead solar / wind / load "
-      "forecasts, not the vintage available at 12:00 of day D. If a forecast was last updated after 12:00, the models see slightly better forecasts than a real noon run would, so "
-      "the test scores are optimistic. The ablation without these inputs (validation loss about 0.08 vs 0.04) shows how much of "
-      "the skill depends on them. This could not be verified from the data and should be checked before real use.")
+    A("- Timing of the official forecasts (SMARD user manual 04/2026): the day-ahead load forecast must be delivered two hours before "
+      "the day-ahead exchange closes (before 12:00) and is only revised for changes of 10 % or more; the day-ahead wind and solar "
+      "forecasts must be delivered 'by 18:00 of the previous day'. SMARD stores one value per hour, not the vintage available at 12:00 "
+      "of day D, and this project has no archive of those vintages. A wind/solar forecast delivered after 12:00 would not exist in a "
+      "real noon run, so the [all fc] models are an upper bound for the noon protocol. The [noon-safe] models avoid the problem but, "
+      "on the test year, do not beat the naive baselines: the skill of this project depends on the wind and solar forecasts.")
+    A("- Without weather forecasts as inputs, solar and the wind-driven part of the price cannot be predicted well for tomorrow "
+      "(weather in this project is observed, not forecast). Archived weather forecasts for the whole training period would be the "
+      "next step to get a noon-safe model with skill; they were not used here.")
     A("- The 'naive day D (price only)' baseline was added after the test set had been scored once (it needs no tuning and "
       "changes no model choice); `final_eval.py` was re-run with `--force` only to add it and to correct report wording. All model predictions are unchanged.")
     A("- Negative prices and 2022 produce large errors. Costs in the planner use wholesale prices only (no taxes or grid fees).")
