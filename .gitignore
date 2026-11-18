@@ -1,0 +1,11 @@
+.venv/
+__pycache__/
+.pytest_cache/
+.DS_Store
+.streamlit/secrets.toml
+archive_v1/
+data/weather_raw/
+.claude/
+.agents/
+Smart_Energy_Forecasting_Project_Guide_short.*
+*.pyc

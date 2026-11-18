@@ -1,0 +1,16 @@
+lstm_weather_future_intra_final_s0: device=mps, params=257,040, train=52405
+ep 01 train 0.0616 val 0.0475 (13s)
+ep 02 train 0.0408 val 0.0460 (13s)
+ep 03 train 0.0365 val 0.0462 (12s)
+ep 04 train 0.0336 val 0.0445 (13s)
+ep 05 train 0.0322 val 0.0448 (13s)
+ep 06 train 0.0301 val 0.0462 (13s)
+ep 07 train 0.0283 val 0.0487 (13s)
+ep 08 train 0.0271 val 0.0495 (13s)
+ep 09 train 0.0258 val 0.0499 (12s)
+early stop
+VALIDATION
+model | target | MAE | RMSE | pinball | coverage | width
+--- | --- | --- | --- | --- | --- | ---
+lstm_weather_future_intra_final_s0 | price | 1.816 | 2.763 | 0.606 | 0.64 | 4.12
+lstm_weather_future_intra_final_s0 | solar | 776.279 | 1294.295 | 253.676 | 0.69 | 2006.21

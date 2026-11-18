@@ -1,0 +1,21 @@
+patchtst_weather_future_intra_final_s2: device=mps, params=973,328, train=52405
+ep 01 train 0.0664 val 0.0541 (6s)
+ep 02 train 0.0441 val 0.0489 (6s)
+ep 03 train 0.0391 val 0.0486 (5s)
+ep 04 train 0.0364 val 0.0470 (5s)
+ep 05 train 0.0345 val 0.0478 (5s)
+ep 06 train 0.0332 val 0.0470 (5s)
+ep 07 train 0.0320 val 0.0460 (5s)
+ep 08 train 0.0311 val 0.0457 (5s)
+ep 09 train 0.0302 val 0.0433 (5s)
+ep 10 train 0.0296 val 0.0436 (5s)
+ep 11 train 0.0290 val 0.0443 (5s)
+ep 12 train 0.0285 val 0.0457 (5s)
+ep 13 train 0.0281 val 0.0463 (5s)
+ep 14 train 0.0277 val 0.0450 (6s)
+early stop
+VALIDATION
+model | target | MAE | RMSE | pinball | coverage | width
+--- | --- | --- | --- | --- | --- | ---
+patchtst_weather_future_intra_final_s2 | price | 1.697 | 2.511 | 0.569 | 0.65 | 3.87
+patchtst_weather_future_intra_final_s2 | solar | 819.294 | 1411.224 | 266.140 | 0.82 | 2885.74

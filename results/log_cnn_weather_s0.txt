@@ -1,0 +1,14 @@
+cnn_weather_s0: device=mps, params=388,112, train=52405
+ep 01 train 0.1194 val 0.0952 (9s)
+ep 02 train 0.0704 val 0.0926 (9s)
+ep 03 train 0.0608 val 0.0991 (9s)
+ep 04 train 0.0536 val 0.1019 (9s)
+ep 05 train 0.0480 val 0.1103 (9s)
+ep 06 train 0.0435 val 0.1115 (9s)
+ep 07 train 0.0403 val 0.1177 (9s)
+early stop
+VALIDATION
+model | target | MAE | RMSE | pinball | coverage | width
+--- | --- | --- | --- | --- | --- | ---
+cnn_weather_s0 | price | 2.970 | 4.063 | 0.972 | 0.75 | 8.49
+cnn_weather_s0 | solar | 2516.656 | 4504.277 | 796.360 | 0.75 | 6967.75

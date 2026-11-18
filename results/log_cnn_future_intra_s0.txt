@@ -1,0 +1,15 @@
+cnn_future_intra_s0: device=mps, params=414,224, train=52405
+ep 01 train 0.0578 val 0.0504 (9s)
+ep 02 train 0.0373 val 0.0459 (9s)
+ep 03 train 0.0330 val 0.0436 (9s)
+ep 04 train 0.0302 val 0.0477 (9s)
+ep 05 train 0.0284 val 0.0461 (9s)
+ep 06 train 0.0269 val 0.0455 (9s)
+ep 07 train 0.0254 val 0.0474 (9s)
+ep 08 train 0.0244 val 0.0492 (79s)
+early stop
+VALIDATION
+model | target | MAE | RMSE | pinball | coverage | width
+--- | --- | --- | --- | --- | --- | ---
+cnn_future_intra_s0 | price | 1.683 | 2.612 | 0.566 | 0.70 | 4.13
+cnn_future_intra_s0 | solar | 827.431 | 1404.005 | 273.735 | 0.69 | 2010.98

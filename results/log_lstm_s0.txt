@@ -1,0 +1,15 @@
+lstm_s0: device=mps, params=223,376, train=52405
+ep 01 train 0.0878 val 0.0889 (13s)
+ep 02 train 0.0630 val 0.0819 (12s)
+ep 03 train 0.0589 val 0.0792 (12s)
+ep 04 train 0.0551 val 0.0831 (12s)
+ep 05 train 0.0513 val 0.0860 (12s)
+ep 06 train 0.0476 val 0.0925 (12s)
+ep 07 train 0.0436 val 0.0985 (13s)
+ep 08 train 0.0396 val 0.0988 (12s)
+early stop
+VALIDATION
+model | target | MAE | RMSE | pinball | coverage | width
+--- | --- | --- | --- | --- | --- | ---
+lstm_s0 | price | 2.626 | 3.695 | 0.850 | 0.80 | 8.08
+lstm_s0 | solar | 2044.347 | 3864.346 | 663.416 | 0.72 | 5218.75

@@ -1,0 +1,22 @@
+cnn_future_intra_lr0.0003_do0.1_s0: device=mps, params=414,224, train=52405
+ep 01 train 0.0770 val 0.0548 (9s)
+ep 02 train 0.0430 val 0.0494 (9s)
+ep 03 train 0.0375 val 0.0462 (9s)
+ep 04 train 0.0339 val 0.0456 (9s)
+ep 05 train 0.0314 val 0.0464 (9s)
+ep 06 train 0.0295 val 0.0457 (9s)
+ep 07 train 0.0281 val 0.0469 (9s)
+ep 08 train 0.0269 val 0.0451 (9s)
+ep 09 train 0.0259 val 0.0462 (9s)
+ep 10 train 0.0249 val 0.0450 (9s)
+ep 11 train 0.0243 val 0.0486 (9s)
+ep 12 train 0.0235 val 0.0471 (9s)
+ep 13 train 0.0229 val 0.0481 (9s)
+ep 14 train 0.0223 val 0.0462 (9s)
+ep 15 train 0.0218 val 0.0468 (9s)
+early stop
+VALIDATION
+model | target | MAE | RMSE | pinball | coverage | width
+--- | --- | --- | --- | --- | --- | ---
+cnn_future_intra_lr0.0003_do0.1_s0 | price | 1.773 | 2.651 | 0.615 | 0.56 | 3.31
+cnn_future_intra_lr0.0003_do0.1_s0 | solar | 750.708 | 1302.776 | 255.227 | 0.70 | 1879.27

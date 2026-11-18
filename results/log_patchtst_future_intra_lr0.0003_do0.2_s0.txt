@@ -1,0 +1,19 @@
+patchtst_future_intra_lr0.0003_do0.2_s0: device=mps, params=961,040, train=52405
+ep 01 train 0.0732 val 0.0580 (6s)
+ep 02 train 0.0506 val 0.0484 (5s)
+ep 03 train 0.0455 val 0.0486 (5s)
+ep 04 train 0.0428 val 0.0439 (5s)
+ep 05 train 0.0407 val 0.0454 (5s)
+ep 06 train 0.0392 val 0.0434 (5s)
+ep 07 train 0.0382 val 0.0422 (5s)
+ep 08 train 0.0373 val 0.0431 (5s)
+ep 09 train 0.0366 val 0.0445 (5s)
+ep 10 train 0.0361 val 0.0441 (5s)
+ep 11 train 0.0357 val 0.0441 (5s)
+ep 12 train 0.0352 val 0.0430 (5s)
+early stop
+VALIDATION
+model | target | MAE | RMSE | pinball | coverage | width
+--- | --- | --- | --- | --- | --- | ---
+patchtst_future_intra_lr0.0003_do0.2_s0 | price | 1.629 | 2.404 | 0.531 | 0.77 | 4.72
+patchtst_future_intra_lr0.0003_do0.2_s0 | solar | 836.461 | 1464.642 | 281.309 | 0.88 | 3439.13
