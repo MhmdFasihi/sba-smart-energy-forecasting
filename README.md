@@ -29,8 +29,12 @@ python src/run_experiments.py ablate   # validation-only input ablation (seed 0)
 python src/run_experiments.py tune     # lr x dropout grid per model
 python src/run_experiments.py final    # 3 seeds x 3 models x with/without weather
 python src/final_eval.py               # scores the test set ONCE (needs --force to repeat), writes results/REPORT.md
-python src/check_report.py             # verifies the report against results/test_results.json
+python src/calibrate.py                # post-hoc conformal widening of the bands (fitted on validation only)
+python src/final_eval.py --force       # puts the recalibration table into the report
+python src/check_report.py             # verifies the report against results/test_results.json and calibration.json
 ```
+Training uses CUDA, Apple MPS or CPU automatically. `colab_training.ipynb` runs the whole chain on a Google Colab GPU
+(not tested on Colab by the author).
 
 ## App
 ```
@@ -40,8 +44,15 @@ Demo mode compares forecast and reality for any 2025/2026 day. "Real tomorrow" n
 (rebuilt on the fly). LLM explanation: put `ANTHROPIC_API_KEY` (or `NVIDIA_API_KEY`) in `.streamlit/secrets.toml`; without a
 key a text summary is shown. Never commit the secrets file.
 
+## Deploy on Streamlit Community Cloud
+Push the repo to GitHub (the models, results and dataset needed by the app are included), then on share.streamlit.io choose
+the repo, branch `main` and `app.py`. Add the optional LLM key under *Settings > Secrets*:
+`ANTHROPIC_API_KEY = "..."` (or `NVIDIA_API_KEY`). Never put keys in the code. Not deployed by the author yet.
+
 ## Tests
 `python -m pytest -q tests`
 
 ## Deviations from the project guide
-PatchTST is a native PyTorch implementation (neuralforecast is univariate); plots use Altair; see `results/REPORT.md`.
+PatchTST is a native PyTorch implementation (neuralforecast is univariate); the CNN has 128 filters (guide: 64); plots use
+Altair instead of plotly; the forecast is made at 12:00 of day D for D+1 with known-future inputs; the bands are
+overconfident (see the recalibration section). All deviations and limitations: `results/REPORT.md`.

@@ -284,6 +284,31 @@ def write_reports(res: dict, plan: dict, order: list[str], monthly: list, best_r
       f"solar {min(covs['solar']):.2f}-{max(covs['solar']):.2f}): the bands are overconfident, most for price. "
       "No recalibration (e.g. conformal prediction on the validation year) was applied.")
     A("")
+    cal_path = R / "calibration.json"
+    if cal_path.exists():
+        cal = json.load(open(cal_path))
+        A("## Post-hoc band recalibration (added after the first test scoring)")
+        A("Conformalized quantile regression (`src/calibrate.py`): the band is widened by a constant per model and target, "
+          "learned on the validation year only (it gives validation coverage 0.80 by construction) and then applied unchanged "
+          "to the test set. The middle forecast, MAE and RMSE do not change. The table above stays the primary result.")
+        A("")
+        A("| Model | Price coverage before → after | Price pinball before → after | Solar coverage before → after | Solar pinball before → after |")
+        A("|---|---|---|---|---|")
+        for g in order:
+            if g in cal:
+                a_, b_ = cal[g]["test_before"], cal[g]["test_after"]
+                cell = lambda t, m, nd: f"{a_[t][m]['mean']:.{nd}f} → {b_[t][m]['mean']:.{nd}f}"
+                A(f"| {label(g)} | {cell('price', 'coverage', 2)} | {cell('price', 'pinball', 3)} | "
+                  f"{cell('solar', 'coverage', 2)} | {cell('solar', 'pinball', 0)} |")
+        pc = [c["test_after"]["price"]["coverage"]["mean"] for c in cal.values()]
+        sc_ = [c["test_after"]["solar"]["coverage"]["mean"] for c in cal.values()]
+        A("")
+        up = lambda t: sum(c["test_after"][t]["coverage"]["mean"] > c["test_before"][t]["coverage"]["mean"] + 0.005 for c in cal.values())
+        A(f"After recalibration the test coverage is price {min(pc):.2f}-{max(pc):.2f}, solar {min(sc_):.2f}-{max(sc_):.2f} "
+          f"(target 0.80). Price coverage rises for {up('price')} of {len(cal)} models and solar coverage for {up('solar')} of {len(cal)}; "
+          f"pinball loss is lower for {sum(c['test_after'][t]['pinball']['mean'] < c['test_before'][t]['pinball']['mean'] for c in cal.values() for t in ('price', 'solar'))} of {2 * len(cal)} model/target pairs. The price bands remain clearly too narrow on 2026. A likely reason is that 2026 "
+          "prices are less like 2025 than a constant widening can absorb (distribution shift); this was not investigated further.")
+        A("")
     A("## Deviations from the guide")
     A("- Day-ahead protocol (12:00 cut-off) instead of forecasting from midnight; known-future inputs added (see ablation).")
     A("- PatchTST is a native PyTorch implementation, because the neuralforecast version is univariate (no exogenous inputs).")

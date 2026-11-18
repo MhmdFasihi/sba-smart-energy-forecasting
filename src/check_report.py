@@ -20,6 +20,16 @@ def num(cell: str) -> float | None:
     return float(m.group(1)) if m else None
 
 
+def rows_cal(report: str) -> dict:
+    """rows of the recalibration table (cells with an arrow)."""
+    out = {}
+    for line in report.splitlines():
+        if line.startswith("|") and "→" in line and not line.startswith("| Model"):
+            cells = [c.strip() for c in line.strip("|").split("|")]
+            out[cells[0]] = cells[1:]
+    return out
+
+
 def check() -> list[str]:
     res = json.load(open(R / "test_results.json"))
     report = (R / "REPORT.md").read_text()
@@ -27,7 +37,7 @@ def check() -> list[str]:
     # 1) the test table
     rows = {}
     for line in report.splitlines():
-        if line.startswith("|") and not line.startswith("|---") and not line.startswith("| Model"):
+        if line.startswith("|") and "→" not in line and not line.startswith("|---") and not line.startswith("| Model"):
             cells = [c.strip() for c in line.strip("|").split("|")]
             rows[cells[0]] = cells[1:]
     test = res["test"]
@@ -65,6 +75,21 @@ def check() -> list[str]:
     for g, v in res["val_loss"].items():
         if g == w and f"{v:.4f}" not in report:
             errors.append(f"winner validation loss {v:.4f} not in report")
+    # 2b) recalibration table (if calibration.json exists)
+    cal_path = R / "calibration.json"
+    if cal_path.exists():
+        cal = json.load(open(cal_path))
+        if "Post-hoc band recalibration" not in report:
+            errors.append("calibration.json exists but the report has no recalibration section")
+        for g, c in cal.items():
+            row = rows_cal(report).get(label(g))
+            if row is None:
+                errors.append(f"missing recalibration row: {label(g)}")
+                continue
+            for cell, (t, m, nd) in zip(row, (("price", "coverage", 2), ("price", "pinball", 3), ("solar", "coverage", 2), ("solar", "pinball", 0))):
+                exp = f"{c['test_before'][t][m]['mean']:.{nd}f} → {c['test_after'][t][m]['mean']:.{nd}f}"
+                if cell != exp:
+                    errors.append(f"{label(g)} recalibration {t} {m}: report {cell!r} vs json {exp!r}")
     # 3) referenced files exist
     for f in re.findall(r"`([\w./-]+\.(?:png|csv|md|json))`", report):
         if not ((R / f).exists() or (R.parent / f).exists()):

@@ -37,6 +37,20 @@ Task: **day-ahead** forecast of the German day-ahead electricity price (ct/kWh) 
 - Winner `patchtst_future_intra_final_s0` vs naive last day (D-1), price MAE by month: worse in 1 of 11 test months (month 11) (see `test_mae_by_month.csv`).
 - Calibration: coverage was already below the 0.80 target on validation (price 0.64-0.72, solar 0.70-0.82) and is lower on test (price 0.44-0.66, solar 0.68-0.80): the bands are overconfident, most for price. No recalibration (e.g. conformal prediction on the validation year) was applied.
 
+## Post-hoc band recalibration (added after the first test scoring)
+Conformalized quantile regression (`src/calibrate.py`): the band is widened by a constant per model and target, learned on the validation year only (it gives validation coverage 0.80 by construction) and then applied unchanged to the test set. The middle forecast, MAE and RMSE do not change. The table above stays the primary result.
+
+| Model | Price coverage before → after | Price pinball before → after | Solar coverage before → after | Solar pinball before → after |
+|---|---|---|---|---|
+| CNN | 0.51 → 0.59 | 1.141 → 1.095 | 0.68 → 0.76 | 314 → 311 |
+| CNN + weather | 0.55 → 0.63 | 1.050 → 1.016 | 0.69 → 0.77 | 302 → 299 |
+| LSTM | 0.44 → 0.53 | 1.540 → 1.479 | 0.71 → 0.77 | 286 → 284 |
+| LSTM + weather | 0.46 → 0.58 | 1.212 → 1.141 | 0.69 → 0.78 | 286 → 283 |
+| PatchTST | 0.66 → 0.73 | 0.832 → 0.818 | 0.77 → 0.77 | 331 → 331 |
+| PatchTST + weather | 0.56 → 0.67 | 0.977 → 0.942 | 0.80 → 0.78 | 321 → 321 |
+
+After recalibration the test coverage is price 0.53-0.73, solar 0.76-0.78 (target 0.80). Price coverage rises for 6 of 6 models and solar coverage for 4 of 6; pinball loss is lower for 11 of 12 model/target pairs. The price bands remain clearly too narrow on 2026. A likely reason is that 2026 prices are less like 2025 than a constant widening can absorb (distribution shift); this was not investigated further.
+
 ## Deviations from the guide
 - Day-ahead protocol (12:00 cut-off) instead of forecasting from midnight; known-future inputs added (see ablation).
 - PatchTST is a native PyTorch implementation, because the neuralforecast version is univariate (no exogenous inputs).
