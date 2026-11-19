@@ -1,93 +1,94 @@
-"""Baselines for the day-ahead task (inputs end at D 11:00, target = D+1 00:00-23:00).
+"""Baselines for the day-ahead task (inputs known at 12:00 of day D, target = D+1 00:00-23:00).
 
- - naive_lastday : same hour of the last fully observed day (D-1), i.e. target - 48 h
- - naive_dayD    : price only, same hour of day D (target - 24 h; the day-D auction prices are known at 12:00)
- - naive_lastweek: same hour and weekday one week before the target day (target - 168 h)
+ - naive_lastday : same hour of the last fully observed day (D-1), i.e. target - 48 h       (guide: "yesterday")
+ - naive_lastweek: same hour and weekday one week before the target day (target - 168 h)    (guide: "last week")
+ - naive_dayD    : price only, same hour of day D (target - 24 h; day D's auction prices are public at 12:00 of D)
  - smard_fc_solar: the official SMARD day-ahead solar forecast for the target day (benchmark, solar only)
 
 They give a point forecast only; to score them like the neural nets, the 10%/90% band is the baseline's own
-residual quantile **per target hour of day** (the targets are day-aligned), estimated on the training days.
+residual quantile per target hour of day, estimated on the training days.
 Run:  python src/baselines.py
 """
 import json
+import warnings
 
 import numpy as np
 import pandas as pd
 
 import windows as W
-from evaluate import metrics, table, to_units
+from evaluate import metrics, table
 
 QS = (0.1, 0.9)
-TC = [W.BASE.index(t) for t in W.TARGETS]        # price, solar are the first input columns
-# row of X (rows are D-6 12:00 ... D 11:00) holding target hour h of day D+1 minus `lag` hours
-LAST_X = W.LOOKBACK - 1                           # row of D 11:00
-OFFSET = W.GAP + 1                                # D+1 00:00 is OFFSET hours after D 11:00
+SPLITS = ("val", "cal", "test")
+TARGETS_OF = {"naive_lastday": ["price", "solar"], "naive_lastweek": ["price", "solar"], "naive_dayD": ["price"],
+              "smard_fc_solar": ["solar"]}
 
 
-def naive(X: np.ndarray, kind: str) -> np.ndarray:
-    """X: (N, 168, C) scaled windows. Returns the (N, 24, 2) scaled point forecast."""
-    lag = {"lastday": 48, "lastweek": 168}[kind]
-    rows = [LAST_X + OFFSET + h - lag for h in range(24)]
-    assert min(rows) >= 0 and max(rows) <= LAST_X
-    return X[:, rows, :][:, :, TC]
+def _lagged(df: pd.DataFrame, starts: pd.DatetimeIndex, col: str, lag: int) -> np.ndarray:
+    """(N, 24) values of `col` at target hour - lag."""
+    s = df[col]
+    return np.stack([s.loc[t - pd.Timedelta(hours=lag):t - pd.Timedelta(hours=lag - 23)].to_numpy() for t in starts])
 
 
-def with_band(point: np.ndarray, lo: np.ndarray, hi: np.ndarray) -> np.ndarray:
-    return np.stack([point + lo, point, point + hi], axis=-1)  # (N, 24, 2, 3)
+def _truth(df, starts) -> np.ndarray:
+    return np.stack([df.loc[t:t + pd.Timedelta(hours=23), W.TARGETS].to_numpy() for t in starts])
 
 
-def band(resid: np.ndarray):
-    """resid: (N, 24, K) training residuals of day-aligned examples -> per target hour 10/90 % quantiles."""
-    return np.quantile(resid, QS, axis=0)
+def point(df: pd.DataFrame, starts: pd.DatetimeIndex, name: str) -> np.ndarray:
+    """(N, 24, 2) point forecast in units; targets a baseline does not cover are NaN."""
+    p = np.full((len(starts), 24, 2), np.nan)
+    if name in ("naive_lastday", "naive_lastweek"):
+        lag = 48 if name == "naive_lastday" else 168
+        for k, t in enumerate(W.TARGETS):
+            p[:, :, k] = _lagged(df, starts, t, lag)
+    elif name == "naive_dayD":
+        p[:, :, 0] = _lagged(df, starts, "price", 24)
+    elif name == "smard_fc_solar":
+        p[:, :, 1] = _lagged(df, starts, "fc_solar", 0)
+    return p
 
 
-def run() -> dict:
-    df = W.load_dataset()
-    data, scaler = W.prepare(df, W.BASE, W.FUTURE)
-    cols = W.BASE + [c for c in W.FUTURE if c not in W.BASE]
-    day = data["train"].start.hour == 0        # one example per training day, targets start at 00:00
+def predictions(df: pd.DataFrame | None = None) -> dict:
+    """name -> split -> (y (N,24,2), q (N,24,2,3)) in units. Band = training residual 10/90 % per target hour."""
+    df = W.load_dataset() if df is None else df
+    data, _ = W.prepare(df, W.BASE, W.FUTURE)
+    starts = {s: data[s].start for s in ("train",) + SPLITS}
+    tr_days = starts["train"][starts["train"].hour == 0]          # one training example per day
+    y_tr = _truth(df, tr_days)
     out = {}
-    for kind in ("lastday", "lastweek"):
-        resid = data["train"].Y[day] - naive(data["train"].X[day], kind)
-        lo, hi = band(resid)
-        for split in ("val", "test"):
-            w = data[split]
-            out.setdefault(f"naive_{kind}", {})[split] = metrics(
-                to_units(w.Y, scaler, cols), to_units(with_band(naive(w.X, kind), lo, hi), scaler, cols))
-    # price only: same hour of day D (target - 24 h). The day-D auction prices are published before 12:00 of D,
-    # so this is a legitimate, stronger baseline than D-1. (Solar of D 12-23 is not yet known, so no solar version.)
-    pr = df["price"]
-    d_pt = lambda w: np.stack([pr.loc[t - pd.Timedelta(hours=24):t - pd.Timedelta(hours=1)].to_numpy() for t in w.start])
-    jp = cols.index("price")
-    tr_pt = d_pt(data["train"])
-    resid = (to_units(data["train"].Y, scaler, cols)[..., 0] - tr_pt)[day]
-    lo, hi = band(resid[..., None])
-    for split in ("val", "test"):
-        w = data[split]
-        y = to_units(w.Y, scaler, cols)
-        pt = d_pt(w)
-        q = np.stack([pt + lo[:, 0], pt, pt + hi[:, 0]], axis=-1)                    # (N, 24, 3)
-        qq = np.repeat(y[..., None], 3, axis=-1)                                      # solar = truth, not scored
-        qq[:, :, 0, :] = q
-        out.setdefault("naive_dayD", {})[split] = {"price": metrics(y, qq)["price"]}
-    # official SMARD day-ahead solar forecast for the target day (scaled with fc_solar's own scaler in F)
-    k, jf, js = W.FUTURE.index("fc_solar"), cols.index("fc_solar"), cols.index("solar")
-
-    def fc_point(w):  # (N, 24, 2) scaled like Y; the price column is a dummy copy of the truth (not scored)
-        p = w.Y.copy()
-        units = w.F[..., k] * scaler.scale_[jf] + scaler.mean_[jf]
-        p[..., 1] = (units - scaler.mean_[js]) / scaler.scale_[js]
-        return p
-
-    resid = (data["train"].Y - fc_point(data["train"]))[day][..., 1:]
-    lo, hi = band(resid)
-    for split in ("val", "test"):
-        w = data[split]
-        pt = fc_point(w)
-        q = with_band(pt, np.concatenate([np.zeros_like(lo), lo], -1), np.concatenate([np.zeros_like(hi), hi], -1))
-        res = metrics(to_units(w.Y, scaler, cols), to_units(q, scaler, cols))
-        out.setdefault("smard_fc_solar", {})[split] = {"solar": res["solar"]}
+    for name in TARGETS_OF:
+        pt_tr = point(df, tr_days, name)
+        with warnings.catch_warnings():                          # targets a baseline does not cover are all-NaN
+            warnings.simplefilter("ignore", RuntimeWarning)
+            lo, hi = np.nanquantile(y_tr - pt_tr, QS, axis=0)    # (24, 2) each
+        out[name] = {}
+        for s in SPLITS:
+            pt = point(df, starts[s], name)
+            out[name][s] = (_truth(df, starts[s]), np.stack([pt + lo, pt, pt + hi], axis=-1))
     return out
+
+
+def run(df: pd.DataFrame | None = None) -> dict:
+    """name -> split -> metrics of the targets the baseline covers (incl. daylight-only solar)."""
+    df = W.load_dataset() if df is None else df
+    preds = predictions(df)
+    out = {}
+    for name, by_split in preds.items():
+        out[name] = {}
+        for s, (y, q) in by_split.items():
+            res = metrics(np.nan_to_num(y), np.nan_to_num(q), W.daylight_mask(df, _starts(df, s)))
+            keep = TARGETS_OF[name] + (["solar_day"] if "solar" in TARGETS_OF[name] else [])
+            out[name][s] = {t: res[t] for t in keep}
+    return out
+
+
+_START_CACHE: dict = {}
+
+
+def _starts(df, split):
+    if split not in _START_CACHE:
+        _START_CACHE.update({s: w.start for s, w in W.prepare(df, W.BASE, W.FUTURE)[0].items()})
+    return _START_CACHE[split]
 
 
 if __name__ == "__main__":

@@ -7,6 +7,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 import windows as W  # noqa: E402
+from evaluate import to_units  # noqa: E402
 
 DATA = Path(__file__).resolve().parents[1] / "data"
 DATASET = DATA / "dataset_hourly.csv"
@@ -43,7 +44,9 @@ def test_day_ahead_windows_shapes_and_no_leakage(df):
         # targets of each split lie inside the split
         assert out["train"].start.max() + pd.Timedelta(hours=23) <= pd.Timestamp("2024-12-31 23:00")
         assert out["val"].start.min() >= pd.Timestamp("2025-01-01")
-        assert out["val"].start.max() + pd.Timedelta(hours=23) <= pd.Timestamp("2025-12-31 23:00")
+        assert out["val"].start.max() + pd.Timedelta(hours=23) <= pd.Timestamp("2025-08-31 23:00")
+        assert out["cal"].start.min() >= pd.Timestamp("2025-09-01")
+        assert out["cal"].start.max() + pd.Timedelta(hours=23) <= pd.Timestamp("2025-12-31 23:00")
         assert out["test"].start.min() >= pd.Timestamp("2026-01-01")
         assert all(s.hour == 0 for s in out["val"].start) and all(s.hour == 0 for s in out["test"].start)
         # scaler only saw training data
@@ -66,7 +69,7 @@ def test_input_ends_at_noon_and_target_is_next_day(df):
         assert w.X[k, -1, 0] * scaler.scale_[j] + scaler.mean_[j] == pytest.approx(last_in, abs=1e-3)
         assert w.X[k, 0, 0] * scaler.scale_[j] + scaler.mean_[j] == pytest.approx(first_in, abs=1e-3)
         raw = df.loc[t0:t0 + pd.Timedelta(hours=23), W.TARGETS].to_numpy()
-        assert np.allclose(W.inverse_targets(w.Y[k], scaler, cols), raw, atol=1e-3)
+        assert np.allclose(to_units(w.Y[k:k + 1], scaler, cols)[0], raw, atol=1e-3)
         # known-future fc_solar of the target hours matches the raw column
         kf = W.FUTURE.index("fc_solar")
         jf = cols.index("fc_solar")
@@ -115,3 +118,49 @@ def test_read_price_quarterhour_averages_four_quarters(tmp_path):
     assert out.loc["2019-01-01 00:00", "price"] == pytest.approx(25.0)
     assert out.loc["2019-01-01 00:00", "price_qmax"] - out.loc["2019-01-01 00:00", "price_qmin"] == pytest.approx(30.0)
     assert np.isnan(out.loc["2019-01-01 01:00", "price"])     # incomplete hour is not invented
+
+
+@needs_data
+def test_day_d_price_channel_is_known_at_noon(df):
+    """price_dayD of target hour h (D+1) is the price of D at hour h: published at the D-1 auction, before 12:00 of D."""
+    out, scaler = W.prepare(df, W.BASE, W.FAMILIES["safe"])
+    cols = W.BASE + [c for c in W.FAMILIES["safe"] if c not in W.BASE]
+    j, k = cols.index("price_dayD"), W.FAMILIES["safe"].index("price_dayD")
+    for split in ("val", "cal", "test"):
+        w = out[split]
+        for i in (0, len(w.start) // 2, len(w.start) - 1):
+            t0 = w.start[i]
+            got = w.F[i, :, k] * scaler.scale_[j] + scaler.mean_[j]
+            hours = pd.date_range(t0 - pd.Timedelta(hours=24), periods=24, freq="h")
+            assert hours.max() < t0                                 # only day D, never the target day D+1
+            assert np.allclose(got, df.loc[hours, "price"].to_numpy(), atol=1e-3)
+
+
+@needs_data
+def test_constant_training_column_is_rejected(df):
+    """price_range_q is 0 before the 15-min market (Oct 2025): it must not be usable as an input."""
+    assert (df.loc[:"2025-09-30", "price_range_q"] == 0).all()
+    with pytest.raises(ValueError, match="price_range_q"):
+        W.prepare(df, W.BASE + W.INTRAHOUR, [])
+
+
+@needs_data
+def test_daylight_mask_uses_training_climatology(df):
+    out, _ = W.prepare(df, W.BASE, [])
+    m = W.daylight_mask(df, out["test"].start)
+    assert m.shape == (len(out["test"].start), 24)
+    assert not m[:, 0].any() and m[:, 12].all()                    # midnight is night, noon is daylight
+
+
+def test_real_mode_requires_complete_known_prices():
+    import realtime
+
+    idx = pd.date_range("2026-11-17 00:00", periods=48, freq="h")
+    df = pd.DataFrame({"price": np.arange(48.0)}, index=idx)
+    origin = pd.Timestamp("2026-11-17 12:00")
+    assert len(realtime.known_prices(df, origin)) == 12
+    with pytest.raises(realtime.NotEnoughData):
+        realtime.known_prices(df.iloc[:20], origin)              # data ends at 19:00 of day D
+    df.loc["2026-11-17 15:00", "price"] = np.nan
+    with pytest.raises(realtime.NotEnoughData):
+        realtime.known_prices(df, origin)

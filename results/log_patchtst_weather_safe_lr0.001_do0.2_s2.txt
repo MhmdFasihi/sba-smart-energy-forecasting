@@ -1,0 +1,15 @@
+patchtst_weather_safe_lr0.001_do0.2_s2: device=mps, params=964,112, train=52405
+ep 01 train 0.0798 val 0.0836 lr 1.0e-03 (12s)
+ep 02 train 0.0634 val 0.0780 lr 1.0e-03 (12s)
+ep 03 train 0.0595 val 0.0719 lr 1.0e-03 (12s)
+ep 04 train 0.0571 val 0.0796 lr 1.0e-03 (949s)
+ep 05 train 0.0548 val 0.0747 lr 1.0e-03 (11s)
+ep 06 train 0.0530 val 0.0766 lr 5.0e-04 (8s)
+ep 07 train 0.0482 val 0.0759 lr 5.0e-04 (9s)
+ep 08 train 0.0466 val 0.0776 lr 5.0e-04 (9s)
+early stop
+VALIDATION
+model | target | MAE | RMSE | pinball | coverage | width
+--- | --- | --- | --- | --- | --- | ---
+patchtst_weather_safe_lr0.001_do0.2_s2 | price | 1.959 | 2.952 | 0.647 | 0.80 | 5.92
+patchtst_weather_safe_lr0.001_do0.2_s2 | solar | 2225.217 | 4139.573 | 701.107 | 0.83 | 7117.06

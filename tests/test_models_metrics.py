@@ -54,17 +54,49 @@ def test_metrics_hand_computed():
 
 
 def test_naive_baselines_pick_the_right_hours():
-    """X rows hold their own row index; row 167 = D 11:00, target hour h of D+1 = row 180+h."""
-    X = np.zeros((1, 168, len(W.BASE)), dtype=np.float32)
-    X[0, :, :] = np.arange(168)[:, None]
-    last_day = B.naive(X, "lastday")[0, :, 0]
-    last_week = B.naive(X, "lastweek")[0, :, 0]
-    assert np.allclose(last_day, 132 + np.arange(24))   # D-1 same hour = target - 48 h
-    assert np.allclose(last_week, 12 + np.arange(24))   # target - 168 h
+    """Values = hours since the start, so each baseline must return target hour minus its lag."""
+    import pandas as pd
+
+    idx = pd.date_range("2026-01-01", periods=24 * 20, freq="h")
+    hrs = np.arange(len(idx), dtype=float)
+    df = pd.DataFrame({"price": hrs, "solar": hrs, "fc_solar": hrs + 0.5}, index=idx)
+    starts = pd.DatetimeIndex([pd.Timestamp("2026-01-10")])
+    t0 = 9 * 24
+    assert np.allclose(B.point(df, starts, "naive_lastday")[0, :, 0], t0 - 48 + np.arange(24))   # D-1 = target - 48 h
+    assert np.allclose(B.point(df, starts, "naive_lastweek")[0, :, 1], t0 - 168 + np.arange(24))
+    p = B.point(df, starts, "naive_dayD")
+    assert np.allclose(p[0, :, 0], t0 - 24 + np.arange(24)) and np.isnan(p[0, :, 1]).all()    # price only
+    assert np.allclose(B.point(df, starts, "smard_fc_solar")[0, :, 1], t0 + 0.5 + np.arange(24))
 
 
-def test_band_is_per_target_hour():
+def test_dm_test_detects_a_clear_difference_and_not_noise():
     rng = np.random.default_rng(0)
-    resid = rng.normal(size=(500, 24, 2)) * np.linspace(1, 5, 24)[None, :, None]
-    lo, hi = B.band(resid)
-    assert lo.shape == (24, 2) and (hi[-1] - lo[-1] > hi[0] - lo[0]).all()   # wider band for noisier hours
+    a = rng.normal(1.0, 0.3, 300)
+    assert E.dm_test(a - 0.2, a + rng.normal(0, 0.05, 300))["p"] < 1e-6      # A clearly better
+    assert E.dm_test(a, a + rng.normal(0, 0.3, 300))["p"] > 0.01             # same expected loss
+    r = E.dm_test(np.zeros(50), np.ones(50) + rng.normal(0, 0.1, 50))
+    assert r["mean_diff"] < 0 and r["stat"] < 0
+
+
+def test_postprocess_sorts_and_clips_solar():
+    q = np.zeros((1, 24, 2, 3))
+    q[0, :, 0] = [3.0, 1.0, 2.0]        # price, crossed
+    q[0, :, 1] = [-5.0, 2.0, -1.0]      # solar, negative values
+    out = E.postprocess(q)
+    assert (out[0, :, 0] == [1.0, 2.0, 3.0]).all()
+    assert (out[0, :, 1] == [0.0, 0.0, 2.0]).all()
+
+
+def test_split_conformal_per_hour_reaches_target_coverage():
+    import calibrate as C
+
+    rng = np.random.default_rng(1)
+    n = 2000
+    y = rng.normal(0, 1, (n, 24, 2)) * np.linspace(0.1, 3, 24)[None, :, None]   # error size differs by hour
+    q = np.zeros((n, 24, 2, 3))
+    q[..., 0], q[..., 2] = -0.3, 0.3                                            # far too narrow
+    d = C.conformal_deltas(y[: n // 2], q[: n // 2])
+    yt, qt = y[n // 2:], q[n // 2:]
+    lo, hi = qt[..., 0] - d, qt[..., 2] + d
+    cov_by_hour = ((yt[..., 0] >= lo[..., 0]) & (yt[..., 0] <= hi[..., 0])).mean(axis=0)
+    assert np.all(np.abs(cov_by_hour - 0.8) < 0.07)

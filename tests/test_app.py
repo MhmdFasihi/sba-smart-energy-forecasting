@@ -10,6 +10,7 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 RUNS = sorted(p.stem.removeprefix("val_") for p in (ROOT / "results").glob("val_*_s0.json"))
+RUNS = [r for r in RUNS if "family" in json.load(open(ROOT / "results" / f"val_{r}.json"))]   # v3 runs only
 pytestmark = pytest.mark.skipif(not RUNS or not (ROOT / "data" / "dataset_hourly.csv").exists(),
                                 reason="needs trained runs and the dataset")
 
@@ -20,12 +21,15 @@ def results_dir(tmp_path, monkeypatch):
         for name in (f"val_{r}.json", f"pred_{r}.npz"):
             (tmp_path / name).symlink_to(ROOT / "results" / name)
     metric = {t: {m: {"mean": 1.0, "std": 0.0} for m in ("MAE", "RMSE", "pinball", "coverage", "width")} for t in ("price", "solar")}
-    groups = {r.removesuffix("_s0"): r for r in RUNS}
+    cfgs = {r: json.load(open(ROOT / "results" / f"val_{r}.json")) for r in RUNS}
+    groups = {}
+    for r, c in cfgs.items():                     # one run per v3 group name (model[_weather]_family)
+        groups.setdefault(f"{c['model']}{'_weather' if c.get('weather') else ''}_{c.get('family', 'safe')}", r)
     (tmp_path / "test_results.json").write_text(json.dumps({
         "test": {g: metric for g in groups} | {"naive_lastday": metric},
         "val": {}, "val_loss": {g: 0.05 + i / 1000 for i, g in enumerate(groups)}, "val_loss_std": {g: 0.0 for g in groups},
         "groups": {g: [r] for g, r in groups.items()}, "best_runs": groups, "winner": next(iter(groups)),
-        "winner_run": RUNS[0], "ranking": list(groups)}))
+        "winner_run": next(iter(groups.values())), "ranking": list(groups)}))
     monkeypatch.setenv("SBA_RESULTS_DIR", str(tmp_path))
     return tmp_path
 

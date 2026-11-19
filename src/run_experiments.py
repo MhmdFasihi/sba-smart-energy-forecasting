@@ -1,31 +1,43 @@
-"""Experiment driver. Every decision here uses VALIDATION loss only (the test set is never read).
+"""v3 experiment driver. Every decision uses the VALIDATION split (Jan-Aug 2025) only; the test set is never read.
 
-Stages (run in this order, each resumable: finished runs are skipped):
-  ablate : seed 0, 3 models x {base, +weather, +future, +weather+future, +intrahour(base+future)}
-  tune   : small grid (lr x dropout) per model on the winning input family, seed 0
-  final  : 3 seeds x 3 models x {without weather, with weather}, with the tuned hyper-parameters and the
-           known-future inputs if the ablation says they help
-Run:  python src/run_experiments.py ablate|tune|final
+Families of known-future inputs (windows.FAMILIES):
+  safe  = calendar + load forecast + day-D prices      -> primary result (all inputs exist at 12:00 of day D)
+  allfc = safe + official wind/solar forecasts           -> upper bound (wind/solar vintage at 12:00 unknown)
+The rule "safe is primary, allfc is the upper bound" is written to the plan before any test scoring.
+
+Stages (resumable: finished runs are skipped; RUNS jobs in parallel):
+  ablate : 3 models x 2 families x {without, with weather} x 2 seeds at lr 1e-3 / dropout 0.1
+  tune   : per family (weather as decided) and model: lr {1e-3, 3e-4} x dropout {0.1, 0.2}, 2 seeds each
+  final  : the tuned setting with 5 seeds (seeds 0-1 come from tuning)
+Run:  python src/run_experiments.py ablate|tune|final [--jobs 2]
 """
+import argparse
 import json
 import subprocess
 import sys
+from concurrent.futures import ThreadPoolExecutor
 from itertools import product
 from pathlib import Path
 
 import numpy as np
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from windows import run_name  # noqa: E402
+
 ROOT = Path(__file__).resolve().parents[1]
 R = ROOT / "results"
 MODELS = ["lstm", "cnn", "patchtst"]
-SEEDS = [0, 1, 2]
-PLAN = R / "experiment_plan.json"      # decisions taken from validation (written by tune/final)
+FAMILIES = ["safe", "allfc"]
+PRIMARY = "safe"
+SEARCH_SEEDS = [0, 1]
+FINAL_SEEDS = [0, 1, 2, 3, 4]
+GRID = [(1e-3, 0.1), (1e-3, 0.2), (3e-4, 0.1), (3e-4, 0.2)]
+WEATHER_MIN_GAIN = 0.01          # weather is used only if it lowers the mean validation loss by more than 1 %
+PLAN = R / "experiment_plan.json"
 
 
-def name_of(model, weather=False, future=False, intra=False, tag="", seed=0) -> str:
-    """future: False | True (all official forecasts) | "strict" (calendar + load forecast only)."""
-    return (f"{model}{'_weather' if weather else ''}{'_strict' if future == 'strict' else '_future' if future else ''}{'_intra' if intra else ''}"
-            f"{('_' + tag) if tag else ''}_s{seed}")
+def hp_tag(lr: float, dropout: float) -> str:
+    return f"lr{lr:g}_do{dropout:g}"
 
 
 def val_loss(name: str) -> float | None:
@@ -33,18 +45,23 @@ def val_loss(name: str) -> float | None:
     return json.load(open(p))["best_val_loss"] if p.exists() else None
 
 
-def train(model, weather=False, future=False, intra=False, tag="", seed=0, lr=1e-3, dropout=0.1, hidden=128) -> float:
-    name = name_of(model, weather, future, intra, tag, seed)
+def train_one(job: tuple) -> tuple[str, float]:
+    model, weather, family, lr, dropout, seed = job
+    name = run_name(model, weather, family, hp_tag(lr, dropout), seed)
     if val_loss(name) is None:
-        cmd = [sys.executable, str(ROOT / "src" / "train.py"), "--model", model, "--seed", str(seed),
-               "--lr", str(lr), "--dropout", str(dropout), "--hidden", str(hidden)]
-        cmd += (["--weather"] if weather else []) + (["--strict"] if future == "strict" else ["--future"] if future else []) + (["--intrahour"] if intra else [])
-        cmd += (["--tag", tag] if tag else [])
+        cmd = [sys.executable, str(ROOT / "src" / "train.py"), "--model", model, "--family", family, "--seed", str(seed),
+               "--lr", str(lr), "--dropout", str(dropout), "--tag", hp_tag(lr, dropout)] + (["--weather"] if weather else [])
         with open(R / f"log_{name}.txt", "w") as log:
             subprocess.run(cmd, stdout=log, stderr=subprocess.STDOUT, check=True, cwd=ROOT)
     v = val_loss(name)
     print(f"{name}: val loss {v:.4f}", flush=True)
-    return v
+    return name, v
+
+
+def train_many(jobs: list[tuple], n_jobs: int) -> dict[tuple, float]:
+    with ThreadPoolExecutor(max_workers=n_jobs) as ex:
+        out = list(ex.map(train_one, jobs))
+    return {j: v for j, (_, v) in zip(jobs, out)}
 
 
 def load_plan() -> dict:
@@ -52,59 +69,54 @@ def load_plan() -> dict:
 
 
 def save_plan(**kw):
-    plan = load_plan() | kw
-    PLAN.write_text(json.dumps(plan, indent=1))
+    PLAN.write_text(json.dumps(load_plan() | kw, indent=1))
 
 
-def ablate():
-    rows = {}
-    for m, (w, f, i) in product(MODELS, [(0, 0, 0), (1, 0, 0), (0, 1, 0), (1, 1, 0), (0, 1, 1)]):
-        rows[f"{m}|w{w}|f{f}|i{i}"] = train(m, bool(w), bool(f), bool(i))
-    mean = lambda w, f, i: float(np.mean([rows[f"{m}|w{w}|f{f}|i{i}"] for m in MODELS]))
-    use_future = mean(0, 1, 0) < mean(0, 0, 0)
-    use_intra = mean(0, 1, 1) < mean(0, int(use_future), 0) - 1e-4
-    save_plan(ablation=rows, use_future=bool(use_future), use_intrahour=bool(use_intra))
-    print("use_future", use_future, "use_intrahour", use_intra)
+def ablate(n_jobs: int):
+    jobs = [(m, w, f, 1e-3, 0.1, s) for f, m, w, s in product(FAMILIES, MODELS, (False, True), SEARCH_SEEDS)]
+    res = train_many(jobs, n_jobs)
+    rows, use_weather = {}, {}
+    for f in FAMILIES:
+        mean = {w: float(np.mean([res[(m, w, f, 1e-3, 0.1, s)] for m in MODELS for s in SEARCH_SEEDS])) for w in (False, True)}
+        use_weather[f] = bool(mean[True] < mean[False] * (1 - WEATHER_MIN_GAIN))
+        rows[f] = {"without_weather": mean[False], "with_weather": mean[True],
+                   "per_model": {f"{m}|w{int(w)}": float(np.mean([res[(m, w, f, 1e-3, 0.1, s)] for s in SEARCH_SEEDS]))
+                                 for m in MODELS for w in (False, True)}}
+    save_plan(version=3, primary_family=PRIMARY,
+              rule="primary result = 'safe' family (inputs available at 12:00 of day D); 'allfc' = upper bound. "
+                   "Winner = lowest mean validation loss over 5 seeds within the safe family. Fixed before any v3 test scoring.",
+              ablation=rows, use_weather=use_weather, weather_min_gain=WEATHER_MIN_GAIN)
+    print("use_weather", use_weather)
 
 
-def tune():
+def tune(n_jobs: int):
     plan = load_plan()
-    fut, intra = plan["use_future"], plan["use_intrahour"]
-    best = {}
-    for m in MODELS:
-        res = {}
-        for lr, do in product([1e-3, 3e-4], [0.1, 0.2]):
-            tag = f"lr{lr:g}_do{do:g}"
-            res[(lr, do)] = train(m, False, fut, intra, tag=tag, lr=lr, dropout=do)
-        lr, do = min(res, key=res.get)
-        best[m] = {"lr": lr, "dropout": do, "val_loss": res[(lr, do)], "grid": {f"{a:g}/{b:g}": v for (a, b), v in res.items()}}
-    save_plan(tuned=best)
+    jobs = [(m, plan["use_weather"][f], f, lr, do, s) for f, m, (lr, do), s in product(FAMILIES, MODELS, GRID, SEARCH_SEEDS)]
+    res = train_many(jobs, n_jobs)
+    tuned = {}
+    for f, m in product(FAMILIES, MODELS):
+        w = plan["use_weather"][f]
+        grid = {hp_tag(lr, do): float(np.mean([res[(m, w, f, lr, do, s)] for s in SEARCH_SEEDS])) for lr, do in GRID}
+        lr, do = min(GRID, key=lambda g: grid[hp_tag(*g)])
+        tuned[f"{f}|{m}"] = {"lr": lr, "dropout": do, "weather": w, "val_loss": grid[hp_tag(lr, do)], "grid": grid}
+    save_plan(tuned=tuned)
 
 
-def final():
+def final(n_jobs: int):
     plan = load_plan()
-    fut, intra = plan["use_future"], plan["use_intrahour"]
-    for seed, m, w in product(SEEDS, MODELS, (False, True)):
-        hp = plan["tuned"][m]
-        train(m, w, fut, intra, tag="final", seed=seed, lr=hp["lr"], dropout=hp["dropout"])
-
-
-def strict(stage: str):
-    """Noon-safe inputs (calendar + load forecast). Added after the timing question about the wind/solar forecasts.
-    Rule fixed BEFORE looking at the results: the strict models are the primary result; the models with all official
-    forecasts are the upper bound. Hyper-parameters are taken from the 'tune' stage (not re-tuned). Seed 0 first
-    (validation check), then 3 seeds without weather."""
-    plan = load_plan()
-    intra = plan["use_intrahour"]
-    seeds = [0] if stage == "check" else SEEDS
-    for seed, m in product(seeds, MODELS):
-        hp = plan["tuned"][m]
-        v = train(m, False, "strict", intra, tag="strictcheck" if stage == "check" else "final", seed=seed,
-                  lr=hp["lr"], dropout=hp["dropout"])
-        if stage == "check":
-            save_plan(strict_check=load_plan().get("strict_check", {}) | {m: v})
+    jobs, groups = [], {}
+    for f, m in product(FAMILIES, MODELS):
+        t = plan["tuned"][f"{f}|{m}"]
+        group = f"{m}{'_weather' if t['weather'] else ''}_{f}"
+        groups[group] = [run_name(m, t["weather"], f, hp_tag(t["lr"], t["dropout"]), s) for s in FINAL_SEEDS]
+        jobs += [(m, t["weather"], f, t["lr"], t["dropout"], s) for s in FINAL_SEEDS]
+    train_many(jobs, n_jobs)
+    save_plan(final_groups=groups)
 
 
 if __name__ == "__main__":
-    {"ablate": ablate, "tune": tune, "final": final, "strict_check": lambda: strict("check"),
-     "strict_final": lambda: strict("final")}[sys.argv[1]]()
+    ap = argparse.ArgumentParser()
+    ap.add_argument("stage", choices=["ablate", "tune", "final"])
+    ap.add_argument("--jobs", type=int, default=2)
+    a = ap.parse_args()
+    {"ablate": ablate, "tune": tune, "final": final}[a.stage](a.jobs)

@@ -40,6 +40,9 @@ def test_overnight_window_uses_evening_of_D_and_morning_of_next_day():
     plan = P.make_plan(q, 5, 11, start=18, end=7, first_hour=12)
     assert plan.hours == [27]                              # D+1 03:00 = absolute hour 27
     assert P.contiguous_blocks(plan.hours) == "03:00-04:00 (tomorrow)"
+    assert P.contiguous_blocks([13, 14, 26], today=True) == "13:00-15:00 (today), 02:00-03:00 (tomorrow)"
+    facts = P.facts_text(P.make_plan(q, 22, 11, start=12, end=36, first_hour=12), "car", q)
+    assert "(today)" in facts or "(tomorrow)" in facts
 
 
 def test_window_outside_the_price_table_is_cut():

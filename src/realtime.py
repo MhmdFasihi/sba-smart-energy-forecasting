@@ -14,7 +14,7 @@ import torch
 
 import data_build
 import windows as W
-from evaluate import to_units
+from evaluate import postprocess, to_units
 from models import build
 
 
@@ -30,6 +30,14 @@ class Forecast:
     known_price_today: pd.Series   # auction prices of D 12:00-23:00 (already known at the origin)
 
 
+def known_prices(df: pd.DataFrame, origin: pd.Timestamp) -> pd.Series:
+    """Auction prices of D 12:00-23:00 (public at the origin D 12:00). Exactly 12 values without gaps, else NotEnoughData."""
+    known = df.loc[origin:origin + pd.Timedelta(hours=11), "price"]
+    if len(known) != 12 or known.isna().any():
+        raise NotEnoughData(f"the day-D auction prices for {origin:%Y-%m-%d} 12:00-23:00 are incomplete")
+    return known
+
+
 def load_checkpoint(run: str):
     ck = torch.load(W.ROOT / "models" / f"{run}.pt", map_location="cpu", weights_only=False)
     model = build(ck["model"], len(ck["features"]), len(ck["future"]), **ck["hp"])
@@ -40,6 +48,7 @@ def load_checkpoint(run: str):
 def forecast_next_day(run: str, df: pd.DataFrame | None = None, origin_day: pd.Timestamp | None = None) -> Forecast:
     """df: output of data_build.build(trim=False). origin_day = D (midnight); default = the newest usable day."""
     df = data_build.build(intrahour=True, trim=False) if df is None else df
+    df = W.add_derived(df) if "price_dayD" not in df else df
     model, ck = load_checkpoint(run)
     sc = joblib.load(W.ROOT / "models" / ck["scaler"])
     cols = sc["cols"]
@@ -67,10 +76,21 @@ def forecast_next_day(run: str, df: pd.DataFrame | None = None, origin_day: pd.T
     F = scaled(tgt, fut).astype(np.float32)[None] if fut else np.zeros((1, W.HORIZON, 0), np.float32)
     with torch.no_grad():
         pred = model(torch.from_numpy(X), torch.from_numpy(F)).numpy()
-    q = np.sort(to_units(pred, sc["scaler"], cols), axis=-1)[0]
-    known = df.loc[origin:origin + pd.Timedelta(hours=11), "price"]
+    q = postprocess(to_units(pred, sc["scaler"], cols))[0]
+    known = known_prices(df, origin)
     return Forecast(t0, origin, q, known)
 
 
 def default_run() -> str:
     return json.load(open(W.ROOT / "results" / "test_results.json"))["winner_run"]
+
+
+def calibration_deltas(run: str) -> np.ndarray | None:
+    """(24, 2) conformal widening of the run (from results/calibration.json), or None."""
+    p = W.ROOT / "results" / "calibration.json"
+    if not p.exists():
+        return None
+    for g in json.load(open(p)).values():
+        if run in g["deltas"]:
+            return np.asarray(g["deltas"][run])
+    return None

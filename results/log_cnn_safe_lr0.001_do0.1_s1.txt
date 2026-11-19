@@ -1,0 +1,15 @@
+cnn_safe_lr0.001_do0.1_s1: device=mps, params=145,040, train=52405
+ep 01 train 0.0758 val 0.0856 lr 1.0e-03 (5s)
+ep 02 train 0.0589 val 0.0847 lr 1.0e-03 (5s)
+ep 03 train 0.0539 val 0.0793 lr 1.0e-03 (5s)
+ep 04 train 0.0491 val 0.0976 lr 1.0e-03 (5s)
+ep 05 train 0.0450 val 0.0925 lr 1.0e-03 (6s)
+ep 06 train 0.0419 val 0.1053 lr 5.0e-04 (7s)
+ep 07 train 0.0374 val 0.1030 lr 5.0e-04 (6s)
+ep 08 train 0.0360 val 0.1047 lr 5.0e-04 (7s)
+early stop
+VALIDATION
+model | target | MAE | RMSE | pinball | coverage | width
+--- | --- | --- | --- | --- | --- | ---
+cnn_safe_lr0.001_do0.1_s1 | price | 1.975 | 2.946 | 0.651 | 0.78 | 5.96
+cnn_safe_lr0.001_do0.1_s1 | solar | 2508.741 | 4571.022 | 833.963 | 0.74 | 5711.01

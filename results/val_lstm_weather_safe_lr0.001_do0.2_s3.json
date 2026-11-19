@@ -1,0 +1,86 @@
+{
+ "val": {
+  "price": {
+   "MAE": 2.0785414449580544,
+   "RMSE": 3.0904601026123815,
+   "pinball": 0.7077232785667541,
+   "coverage": 0.723079561042524,
+   "width": 5.845769481401917
+  },
+  "solar": {
+   "MAE": 2467.3022302074637,
+   "RMSE": 4430.7390950666295,
+   "pinball": 835.5591502881606,
+   "coverage": 0.7379972565157751,
+   "width": 5988.250114302215
+  }
+ },
+ "best_val_loss": 0.08322452753782272,
+ "epochs": 6,
+ "history": [
+  [
+   0.07398363875800809,
+   0.08322452753782272
+  ],
+  [
+   0.05682832378744453,
+   0.08464061468839645
+  ],
+  [
+   0.05257711301447269,
+   0.08328008651733398
+  ],
+  [
+   0.049010042767296785,
+   0.09239833801984787
+  ],
+  [
+   0.04276597124453595,
+   0.0909552350640297
+  ],
+  [
+   0.03927432944538393,
+   0.10916244238615036
+  ]
+ ],
+ "model": "lstm",
+ "family": "safe",
+ "weather": true,
+ "features": [
+  "price",
+  "solar",
+  "wind_onshore",
+  "wind_offshore",
+  "load",
+  "residual_load",
+  "is_weekend",
+  "is_holiday",
+  "hour_sin",
+  "hour_cos",
+  "doy_sin",
+  "doy_cos",
+  "radiation",
+  "sunshine",
+  "cloud_cover",
+  "temp"
+ ],
+ "future": [
+  "is_weekend",
+  "is_holiday",
+  "hour_sin",
+  "hour_cos",
+  "doy_sin",
+  "doy_cos",
+  "fc_load",
+  "price_dayD"
+ ],
+ "hp": {
+  "dropout": 0.2,
+  "hidden": 128
+ },
+ "lr": 0.001,
+ "batch": 64,
+ "clip": 1.0,
+ "seed": 3,
+ "scaler": "scaler_w_safe.joblib"
+}

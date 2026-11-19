@@ -9,3 +9,4 @@ data/weather_raw/
 .agents/
 Smart_Energy_Forecasting_Project_Guide_short.*
 *.pyc
+archive_v2/

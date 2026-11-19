@@ -1,0 +1,25 @@
+lstm_allfc_lr0.0003_do0.1_s3: device=mps, params=257,936, train=52405
+ep 01 train 0.0752 val 0.0592 lr 3.0e-04 (17s)
+ep 02 train 0.0427 val 0.0480 lr 3.0e-04 (969s)
+ep 03 train 0.0370 val 0.0452 lr 3.0e-04 (26s)
+ep 04 train 0.0342 val 0.0427 lr 3.0e-04 (970s)
+ep 05 train 0.0325 val 0.0416 lr 3.0e-04 (26s)
+ep 06 train 0.0313 val 0.0411 lr 3.0e-04 (28s)
+ep 07 train 0.0302 val 0.0401 lr 3.0e-04 (28s)
+ep 08 train 0.0293 val 0.0403 lr 3.0e-04 (27s)
+ep 09 train 0.0284 val 0.0402 lr 3.0e-04 (28s)
+ep 10 train 0.0277 val 0.0402 lr 1.5e-04 (982s)
+ep 11 train 0.0262 val 0.0402 lr 1.5e-04 (979s)
+ep 12 train 0.0258 val 0.0400 lr 1.5e-04 (1002s)
+ep 13 train 0.0255 val 0.0394 lr 1.5e-04 (1009s)
+ep 14 train 0.0250 val 0.0394 lr 1.5e-04 (25s)
+ep 15 train 0.0247 val 0.0403 lr 1.5e-04 (977s)
+ep 16 train 0.0244 val 0.0408 lr 1.5e-04 (31s)
+ep 17 train 0.0241 val 0.0407 lr 7.5e-05 (25s)
+ep 18 train 0.0234 val 0.0406 lr 7.5e-05 (25s)
+early stop
+VALIDATION
+model | target | MAE | RMSE | pinball | coverage | width
+--- | --- | --- | --- | --- | --- | ---
+lstm_allfc_lr0.0003_do0.1_s3 | price | 1.429 | 2.305 | 0.499 | 0.65 | 3.42
+lstm_allfc_lr0.0003_do0.1_s3 | solar | 753.930 | 1370.146 | 250.473 | 0.71 | 1888.06

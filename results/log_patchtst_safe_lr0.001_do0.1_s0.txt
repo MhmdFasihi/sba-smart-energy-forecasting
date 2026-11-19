@@ -1,0 +1,14 @@
+patchtst_safe_lr0.001_do0.1_s0: device=mps, params=951,824, train=52405
+ep 01 train 0.0780 val 0.0848 lr 1.0e-03 (9s)
+ep 02 train 0.0609 val 0.0758 lr 1.0e-03 (9s)
+ep 03 train 0.0557 val 0.0876 lr 1.0e-03 (9s)
+ep 04 train 0.0523 val 0.0813 lr 1.0e-03 (7s)
+ep 05 train 0.0494 val 0.0860 lr 5.0e-04 (9s)
+ep 06 train 0.0432 val 0.0860 lr 5.0e-04 (8s)
+ep 07 train 0.0411 val 0.0870 lr 5.0e-04 (8s)
+early stop
+VALIDATION
+model | target | MAE | RMSE | pinball | coverage | width
+--- | --- | --- | --- | --- | --- | ---
+patchtst_safe_lr0.001_do0.1_s0 | price | 2.069 | 3.027 | 0.685 | 0.79 | 6.31
+patchtst_safe_lr0.001_do0.1_s0 | solar | 2310.949 | 4226.874 | 730.268 | 0.77 | 6011.25

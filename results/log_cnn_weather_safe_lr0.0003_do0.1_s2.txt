@@ -1,0 +1,17 @@
+cnn_weather_safe_lr0.0003_do0.1_s2: device=mps, params=146,064, train=52405
+ep 01 train 0.0928 val 0.1041 lr 3.0e-04 (8s)
+ep 02 train 0.0636 val 0.0874 lr 3.0e-04 (7s)
+ep 03 train 0.0581 val 0.0824 lr 3.0e-04 (7s)
+ep 04 train 0.0549 val 0.0810 lr 3.0e-04 (7s)
+ep 05 train 0.0524 val 0.0807 lr 3.0e-04 (7s)
+ep 06 train 0.0501 val 0.0818 lr 3.0e-04 (7s)
+ep 07 train 0.0482 val 0.0823 lr 3.0e-04 (7s)
+ep 08 train 0.0463 val 0.0851 lr 1.5e-04 (7s)
+ep 09 train 0.0440 val 0.0846 lr 1.5e-04 (7s)
+ep 10 train 0.0431 val 0.0822 lr 1.5e-04 (7s)
+early stop
+VALIDATION
+model | target | MAE | RMSE | pinball | coverage | width
+--- | --- | --- | --- | --- | --- | ---
+cnn_weather_safe_lr0.0003_do0.1_s2 | price | 2.120 | 3.066 | 0.705 | 0.78 | 6.54
+cnn_weather_safe_lr0.0003_do0.1_s2 | solar | 2472.577 | 4402.481 | 813.702 | 0.70 | 6094.13

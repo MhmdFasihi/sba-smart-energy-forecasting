@@ -20,7 +20,7 @@ ROOT = Path(__file__).resolve().parent
 RESULTS = Path(os.environ.get("SBA_RESULTS_DIR", ROOT / "results"))   # overridable for tests
 sys.path.insert(0, str(ROOT / "src"))
 import planner  # noqa: E402
-from evaluate import to_units  # noqa: E402
+from evaluate import postprocess, to_units  # noqa: E402
 
 st.set_page_config(page_title="Smart Energy Forecasting", page_icon=":material/bolt:", layout="wide")
 PRICE_COLOR, SOLAR_COLOR = "#1f77b4", "#e69f00"
@@ -46,10 +46,22 @@ def load_predictions(run: str) -> dict:
     z = np.load(RESULTS / f"pred_{run}.npz")
     out = {}
     for split in ("val", "test"):
-        units = np.sort(to_units(z[split], sc["scaler"], sc["cols"]), axis=-1)  # low <= mid <= high
+        units = postprocess(to_units(z[split], sc["scaler"], sc["cols"]))  # low <= mid <= high, solar >= 0
         for i, t in enumerate(pd.DatetimeIndex(z[f"{split}_start"])):
             out[t.normalize()] = units[i]
     return out
+
+
+@st.cache_data
+def load_deltas(run: str):
+    """(24, 2) conformal band widening of the run (fitted on Sep-Dec 2025), or None."""
+    p = RESULTS / "calibration.json"
+    if not p.exists():
+        return None
+    for g in json.load(open(p)).values():
+        if run in g.get("deltas", {}):
+            return np.asarray(g["deltas"][run])
+    return None
 
 
 @st.cache_resource(show_spinner="Loading the newest SMARD data and the model ...")
@@ -105,10 +117,14 @@ with st.sidebar:
                                 help="Demo: pick a past day and compare forecast and reality. Real tomorrow: forecast the "
                                      "next day from the newest SMARD files in data/.")
     # primary (noon-safe) models first, the all-forecast upper-bound models after them; each sorted by validation loss
-    ordered = sorted(groups, key=lambda g: ("_future" in g, results["val_loss"][g]))
+    ordered = sorted(groups, key=lambda g: (not g.endswith("_safe"), results["val_loss"][g]))
     names = {g: label(g) + ("  (validation winner)" if g == results["winner"] else "") for g in ordered}
     group = st.selectbox("Model", ordered, format_func=names.get, help="Sorted by validation pinball loss.")
     run = groups[group]
+    deltas = load_deltas(run)
+    recal = st.toggle("Recalibrated bands", value=deltas is not None, disabled=deltas is None, key="recal",
+                      help="Widen the 10-90 % band per hour with the conformal correction fitted on Sep-Dec 2025 "
+                           "(raw bands are too narrow, see the report).")
     if mode == "Demo":
         preds = load_predictions(run)
         days = sorted(preds)
@@ -137,6 +153,11 @@ else:
         st.warning(f"Real mode is not possible with the files in data/: {e}", icon=":material/cloud_download:")
         st.stop()
     d1, q, origin, known_today = fc.day, fc.q, fc.origin, fc.known_price_today
+if recal and deltas is not None:
+    q = np.array(q, dtype=float)
+    q[:, :, 0] -= deltas
+    q[:, :, 2] += deltas
+    q[:, 1, :] = np.clip(q[:, 1, :], 0, None)
 price_q, solar_q = q[:, 0, :], q[:, 1, :]
 x = pd.date_range(d1, periods=24, freq="h")
 
@@ -144,7 +165,7 @@ st.title("Smart energy forecasting")
 st.caption(f"Day-ahead forecast for **{d1:%A, %d %B %Y}**, made at {origin:%d %b %H:%M} (auction cut-off), "
            f"model: {label(group)}, run `{run}`.")
 
-if "_future" in group:
+if group.endswith("_allfc"):
     st.warning("This model also uses the official day-ahead wind and solar forecasts of the target day. Their version available at "
                "12:00 is not verified, so its scores are an upper bound for a real noon forecast.", icon=":material/warning:")
 else:
@@ -155,7 +176,7 @@ else:
         _m, _b = _t[group][_k]["pinball"]["mean"], _t[_best][_k]["pinball"]["mean"]
         _msg.append(f"{_n}: {'better' if _m < _b else 'not better'} than the best naive baseline on test pinball loss "
                     f"({_m:.3g} vs {_b:.3g})")
-    st.info("Noon-safe model (only inputs known at 12:00). On the 2026 test year, " + "; ".join(_msg) + ".",
+    st.info("Noon-safe model (calendar, load forecast and day-D prices: all known at 12:00). On the 2026 test year, " + "; ".join(_msg) + ".",
             icon=":material/info:")
 
 tab_over, tab_cmp, tab_plan, tab_about = st.tabs(
@@ -197,7 +218,7 @@ with tab_over:
 
 # ---------------------------------------------------------------- tab 2: model comparison
 with tab_cmp:
-    st.subheader("Test period (2026), scored once")
+    st.subheader("Test period (2026)")
     test = results["test"]
     c1, c2 = st.columns(2)
     target = c1.segmented_control("Target", ["price", "solar"], default="price", key="cmp_target")
@@ -215,7 +236,8 @@ with tab_cmp:
         layers.append(alt.Chart(pd.DataFrame({"v": [0.8]})).mark_rule(color="black", strokeDash=[4, 4]).encode(x="v:Q"))
     st.altair_chart(alt.layer(*layers).properties(height=36 * len(rows) + 40), width="stretch",
                     alt=f"Bar chart of test {target} {metric} for every model")
-    st.caption("Coverage target is 0.80 (dashed line). Neural models: mean over seeds; baselines: one deterministic run.")
+    st.caption("Coverage target is 0.80 (dashed line), raw bands. Neural models: mean over seeds; baselines: one deterministic "
+               "run. The 2026 test year was also scored by earlier project versions (see the report's version history).")
     st.markdown("**Full table**")
     full = [{"model": label(g), "target": t, **{m: round(test[g][t][m]["mean"], 3) for m in ("MAE", "RMSE", "pinball", "coverage", "width")}}
             for g in test for t in test[g]]
@@ -262,9 +284,11 @@ with tab_plan:
                                        known=known_df, chosen=chosen, height=320),
                             width="stretch", alt="Price (known today, forecast tomorrow) with the chosen hours marked")
         with st.container(horizontal=True):
-            st.metric("Chosen hours", planner.contiguous_blocks(plan.hours), border=True)
-            st.metric("Estimated cost", f"{plan.cost_eur:.2f} EUR", f"range {plan.cost_low_eur:.2f} - {plan.cost_high_eur:.2f} EUR",
-                      delta_color="off", border=True)
+            st.metric("Chosen hours", planner.contiguous_blocks(plan.hours, first < 24), border=True)
+            st.metric("Estimated cost", f"{plan.cost_eur:.2f} EUR", f"{plan.cost_low_eur:.2f} to {plan.cost_high_eur:.2f} EUR",
+                      delta_color="off", border=True,
+                      help="Middle forecast. The range adds up the hourly low and high values: it assumes all hours "
+                           "move together and is not an 80 % interval for the total cost.")
             st.metric("Average price", f"{plan.avg_price_ct:.1f} ct/kWh", border=True)
         try:
             key = st.secrets.get("ANTHROPIC_API_KEY") or st.secrets.get("NVIDIA_API_KEY")
@@ -273,7 +297,9 @@ with tab_plan:
             key, provider = None, None
         text, source = planner.explain(plan, task.lower(), table, key, provider)
         st.info(text, title="Assistant", icon=":material/smart_toy:")
-        st.caption("Explanation by LLM" if source == "llm" else "Simple text summary (no API key set)")
+        st.caption("Explanation by LLM" if source == "llm" else
+                   "Simple text summary (the LLM call failed)" if "LLM unavailable" in text else
+                   "Simple text summary (no API key set)")
         st.caption("Cost uses the wholesale price only; households pay taxes and grid fees on top, and only dynamic "
                    "tariffs pass the hourly price on.")
 
@@ -283,11 +309,14 @@ with tab_about:
 **What this is.** A day-ahead forecast of the German electricity price and solar generation with an uncertainty band,
 and a small planning assistant (an optimizer picks the hours, an LLM only explains the plan).
 
-**Protocol.** At 12:00 of day D the forecast for day D+1 is made from the last 7 days plus the known-future inputs of the target day
-(calendar and the official SMARD day-ahead forecasts). Training 2019-2024, validation 2025, test 2026 (scored once).
+**Protocol.** At 12:00 of day D the forecast for day D+1 is made from the last 7 days plus known-future inputs of the target
+day. *Noon-safe* models (the main result) use the calendar, the official load forecast and the day-D auction prices, which are
+all public at 12:00. *All fc* models also use the official wind and solar forecasts; these are only due by 18:00 of the
+previous day, so their scores are an upper bound. Training 2019-2024, validation Jan-Aug 2025, band calibration Sep-Dec 2025,
+test 2026.
 
 **Limitations**
-- Weather inputs are observations, not forecasts, so the solar gain would be smaller in real use.
+- Weather enters only as observed history (no weather forecast for tomorrow).
 - Prices are wholesale only (no taxes or grid fees). Negative prices and the 2022 energy crisis cause large errors.
 - Prices are quarter-hourly since October 2025; they are averaged to hourly values here.
 

@@ -1,0 +1,21 @@
+patchtst_weather_allfc_lr0.001_do0.1_s0: device=mps, params=976,400, train=52405
+ep 01 train 0.0581 val 0.0476 lr 1.0e-03 (8s)
+ep 02 train 0.0400 val 0.0431 lr 1.0e-03 (7s)
+ep 03 train 0.0365 val 0.0420 lr 1.0e-03 (8s)
+ep 04 train 0.0348 val 0.0435 lr 1.0e-03 (8s)
+ep 05 train 0.0335 val 0.0405 lr 1.0e-03 (7s)
+ep 06 train 0.0325 val 0.0418 lr 1.0e-03 (8s)
+ep 07 train 0.0317 val 0.0415 lr 1.0e-03 (7s)
+ep 08 train 0.0310 val 0.0462 lr 5.0e-04 (7s)
+ep 09 train 0.0277 val 0.0398 lr 5.0e-04 (7s)
+ep 10 train 0.0272 val 0.0413 lr 5.0e-04 (8s)
+ep 11 train 0.0268 val 0.0408 lr 5.0e-04 (7s)
+ep 12 train 0.0264 val 0.0427 lr 2.5e-04 (7s)
+ep 13 train 0.0249 val 0.0421 lr 2.5e-04 (7s)
+ep 14 train 0.0246 val 0.0414 lr 2.5e-04 (7s)
+early stop
+VALIDATION
+model | target | MAE | RMSE | pinball | coverage | width
+--- | --- | --- | --- | --- | --- | ---
+patchtst_weather_allfc_lr0.001_do0.1_s0 | price | 1.430 | 2.174 | 0.479 | 0.65 | 3.23
+patchtst_weather_allfc_lr0.001_do0.1_s0 | solar | 830.717 | 1462.651 | 272.160 | 0.77 | 2809.15

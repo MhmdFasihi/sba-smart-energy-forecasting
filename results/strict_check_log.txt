@@ -1,3 +1,0 @@
-lstm_strict_intra_strictcheck_s0: val loss 0.0839
-cnn_strict_intra_strictcheck_s0: val loss 0.0962
-patchtst_strict_intra_strictcheck_s0: val loss 0.0814

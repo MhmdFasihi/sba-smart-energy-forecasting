@@ -79,11 +79,13 @@ def make_plan(price_q: np.ndarray, energy_kwh: float, power_kw: float, start: in
     return Plan(chosen, energy, cost[1], cost[0], cost[2], mode, n_need, feasible, avg, first_hour, notes)
 
 
-def hour_label(h: int) -> str:
-    return f"{h % 24:02d}:00" + (" (tomorrow)" if h >= 24 else "")
+def hour_label(h: int, today: bool = False) -> str:
+    """Absolute hour -> '03:00 (tomorrow)'; with today=True, hours of day D get ' (today)'."""
+    return f"{h % 24:02d}:00" + (" (tomorrow)" if h >= 24 else " (today)" if today else "")
 
 
-def contiguous_blocks(hours: list[int]) -> str:
+def contiguous_blocks(hours: list[int], today: bool = False) -> str:
+    """Chosen hours as blocks. today=True labels blocks of day D with '(today)' (timeline starts on day D)."""
     if not hours:
         return "none"
     blocks, s, p = [], hours[0], hours[0]
@@ -91,7 +93,7 @@ def contiguous_blocks(hours: list[int]) -> str:
         if h is not None and h == p + 1:
             p = h
             continue
-        blocks.append(f"{s % 24:02d}:00-{(p + 1) % 24:02d}:00" + (" (tomorrow)" if s >= 24 else ""))
+        blocks.append(f"{s % 24:02d}:00-{(p + 1) % 24:02d}:00" + (" (tomorrow)" if s >= 24 else " (today)" if today else ""))
         if h is not None:
             s = p = h
     return ", ".join(blocks)
@@ -100,7 +102,7 @@ def contiguous_blocks(hours: list[int]) -> str:
 def template_summary(plan: Plan, task: str, price_q: np.ndarray) -> str:
     q = np.sort(np.asarray(price_q, dtype=float), axis=-1)
     width = np.mean([q[h - plan.first_hour, 2] - q[h - plan.first_hour, 0] for h in plan.hours]) if plan.hours else 0.0
-    txt = (f"Charge/run the {task} during {contiguous_blocks(plan.hours)} ({len(plan.hours)} h"
+    txt = (f"Charge/run the {task} during {contiguous_blocks(plan.hours, plan.first_hour < 24)} ({len(plan.hours)} h"
            f"{', safe mode' if plan.mode == 'safe' else ''}). Expected cost {plan.cost_eur:.2f} EUR at an "
            f"average {plan.avg_price_ct:.1f} ct/kWh (range {plan.cost_low_eur:.2f}-{plan.cost_high_eur:.2f} EUR). "
            f"The forecast band in these hours is about {width:.1f} ct/kWh wide, so the plan carries "
@@ -110,12 +112,14 @@ def template_summary(plan: Plan, task: str, price_q: np.ndarray) -> str:
 
 def facts_text(plan: Plan, task: str, price_q: np.ndarray) -> str:
     q = np.sort(np.asarray(price_q, dtype=float), axis=-1)
-    return (f"Task: {task}. Mode: {plan.mode}. Chosen hours: {contiguous_blocks(plan.hours)}. "
+    today = plan.first_hour < 24
+    return (f"Task: {task}. Mode: {plan.mode}. Chosen hours: {contiguous_blocks(plan.hours, today)}. "
             f"Hours needed: {plan.hours_needed}. Expected cost: {plan.cost_eur:.2f} EUR "
             f"(plausible range {plan.cost_low_eur:.2f}-{plan.cost_high_eur:.2f} EUR). "
             f"Average price {plan.avg_price_ct:.1f} ct/kWh. Hourly low/mid/high ct/kWh for chosen hours: "
-            + "; ".join(f"{hour_label(h)} {q[h - plan.first_hour, 0]:.1f}/{q[h - plan.first_hour, 1]:.1f}/"
-                        f"{q[h - plan.first_hour, 2]:.1f}" for h in plan.hours)
+            + "; ".join(f"{hour_label(h, today)} {q[h - plan.first_hour, 0]:.1f}/{q[h - plan.first_hour, 1]:.1f}/"
+                        f"{q[h - plan.first_hour, 2]:.1f}" + (" (known auction price)" if h < 24 and today else "")
+                        for h in plan.hours)
             + f". Notes: {' '.join(plan.notes) or 'none'}")
 
 

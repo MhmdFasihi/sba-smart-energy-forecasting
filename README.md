@@ -4,13 +4,14 @@ Day-ahead forecast of the German electricity price (ct/kWh) and solar generation
 three model families (LSTM, 1D-CNN, PatchTST) against naive baselines and the official SMARD solar forecast, a planning
 assistant and a Streamlit dashboard.
 
-**Protocol:** at 12:00 of day D (auction cut-off) forecast day D+1 from the last 168 h; known-future inputs of the
-target day (calendar, official SMARD day-ahead forecasts) are used. Train 2019-2024, validation 2025, test 2026 (scored once).
+**Protocol (v3):** at 12:00 of day D (auction cut-off) forecast day D+1 from the last 168 h plus known-future inputs of
+the target day. Two input families:
+- **noon-safe** (primary result): calendar, official day-ahead load forecast, and the day-D auction prices (all public at 12:00);
+- **all fc** (upper bound): additionally the official wind/solar forecasts, which SMARD only requires "by 18:00 of the
+  previous day", so their version at noon is unknown.
 
-**Main result (see `results/REPORT.md`):** only the *noon-safe* models (inputs verifiably known at 12:00: calendar +
-load forecast) are the primary result, and on the 2026 test year they do **not** beat the naive baselines. The *all-forecast*
-models (which also use the official day-ahead wind/solar forecasts) are much better, but those forecasts may not exist at
-12:00 (SMARD manual: delivered "by 18:00 of the previous day"), so they are an upper bound.
+Train 2019-2024, validation Jan-Aug 2025 (all choices), calibration Sep-Dec 2025 (band recalibration only), test 2026.
+The 2026 test year was also scored by earlier versions; see the version history in `results/REPORT.md`.
 
 ## Setup (Python 3.10-3.12)
 ```
@@ -30,36 +31,33 @@ python src/data_build.py               # -> data/dataset_hourly.csv
 
 ## Train and evaluate
 ```
-python src/run_experiments.py ablate   # validation-only input ablation (seed 0)
-python src/run_experiments.py tune     # lr x dropout grid per model
-python src/run_experiments.py final    # 3 seeds x 3 models x with/without weather
-python src/run_experiments.py strict_check   # noon-safe inputs (calendar + load forecast only), seed 0, validation
-python src/run_experiments.py strict_final   # 3 seeds x 3 models with noon-safe inputs (primary result)
-python src/final_eval.py               # scores the test set ONCE (needs --force to repeat), writes results/REPORT.md
-python src/calibrate.py                # post-hoc conformal widening of the bands (fitted on validation only)
-python src/final_eval.py --force       # puts the recalibration table into the report
-python src/check_report.py             # verifies the report against results/test_results.json and calibration.json
+python src/run_experiments.py ablate   # weather on/off per family, 3 models x 2 seeds (validation only)
+python src/run_experiments.py tune     # lr x dropout grid per family and model, 2 seeds each
+python src/run_experiments.py final    # tuned setting, 5 seeds; writes the selection rule to results/experiment_plan.json
+python src/final_eval.py               # scores the test set (refuses to run twice without --force)
+python src/calibrate.py                # per-hour split-conformal band widening, fitted on Sep-Dec 2025 only
+python src/final_eval.py --force       # regenerates the report with the recalibration table (same numbers)
+python src/check_report.py             # checks the report AND recomputes the test metrics from the raw files
 ```
-Training uses CUDA, Apple MPS or CPU automatically. `colab_training.ipynb` runs the whole chain on a Google Colab GPU
-(not tested on Colab by the author).
+`--jobs N` runs N trainings in parallel. Training uses CUDA, Apple MPS or CPU automatically. `colab_training.ipynb`
+runs the whole chain on a Google Colab GPU (not tested on Colab by the author).
 
 ## App
 ```
 streamlit run app.py
 ```
-Demo mode compares forecast and reality for any 2025/2026 day. "Real tomorrow" needs newer SMARD downloads in `data/`
-(rebuilt on the fly). LLM explanation: put `ANTHROPIC_API_KEY` (or `NVIDIA_API_KEY`) in `.streamlit/secrets.toml`; without a
-key a text summary is shown. Never commit the secrets file.
+Demo mode compares forecast and reality for any 2025/2026 day (recalibrated bands by default, raw bands with a toggle).
+"Real tomorrow" needs newer SMARD downloads in `data/` (rebuilt on the fly). LLM explanation: put `ANTHROPIC_API_KEY`
+(or `NVIDIA_API_KEY`) in `.streamlit/secrets.toml` (git-ignored); without a key a text summary is shown.
 
 ## Deploy on Streamlit Community Cloud
 Push the repo to GitHub (the models, results and dataset needed by the app are included), then on share.streamlit.io choose
-the repo, branch `main` and `app.py`. Add the optional LLM key under *Settings > Secrets*:
-`ANTHROPIC_API_KEY = "..."` (or `NVIDIA_API_KEY`). Never put keys in the code. Not deployed by the author yet.
+the repo, branch `main` and `app.py`. Add the optional LLM key under *Settings > Secrets*. Not deployed by the author yet.
 
 ## Tests
 `python -m pytest -q tests`
 
 ## Deviations from the project guide
-PatchTST is a native PyTorch implementation (neuralforecast is univariate); the CNN has 128 filters (guide: 64); plots use
-Altair instead of plotly; the forecast is made at 12:00 of day D for D+1 with known-future inputs; the bands are
-overconfident (see the recalibration section). All deviations and limitations: `results/REPORT.md`.
+PatchTST is a native PyTorch implementation (neuralforecast is univariate); plots use Altair instead of plotly; the
+forecast is made at 12:00 of day D for D+1 with known-future inputs; validation is Jan-Aug 2025 because Sep-Dec 2025 is
+reserved for band recalibration. All deviations and limitations: `results/REPORT.md`.

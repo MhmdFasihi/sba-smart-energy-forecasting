@@ -21,18 +21,39 @@ TARGETS = ["price", "solar"]
 CALENDAR = ["is_weekend", "is_holiday", "hour_sin", "hour_cos", "doy_sin", "doy_cos"]
 BASE = ["price", "solar", "wind_onshore", "wind_offshore", "load", "residual_load"] + CALENDAR  # guide's 12
 WEATHER = ["radiation", "sunshine", "cloud_cover", "temp"]
-INTRAHOUR = ["price_range_q"]                         # max-min of the four 15-min prices in the hour (ablation)
+# price_range_q (max-min of the four 15-min prices) is NOT used: SMARD repeats the hourly price four times before the
+# 15-min day-ahead market started (Oct 2025), so the column is exactly 0 for the whole training period (v2 used it by mistake).
+INTRAHOUR = ["price_range_q"]
 DAYAHEAD_FC = ["fc_solar", "fc_wind_onshore", "fc_load"]   # official SMARD forecasts for the target day
-FUTURE = CALENDAR + DAYAHEAD_FC                       # known-future inputs of the target hours
-# "noon-safe" subset: calendar + the load forecast. SMARD manual (04/2026): the TSOs must deliver the day-ahead load forecast
-# two hours before the day-ahead exchange closes (before 12:00), but the wind/solar day-ahead forecasts only "by 18:00 of
-# the previous day", so their vintage at 12:00 is not known. The strict set avoids that timing risk.
-STRICT_FUTURE = CALENDAR + ["fc_load"]
-SPLITS = {"train": ("2019-01-01", "2024-12-31"), "val": ("2025-01-01", "2025-12-31"), "test": ("2026-01-01", None)}
+# Known-future inputs of the target hours (D+1), by family:
+#  - price_dayD: price of the same hour on day D (= target - 24 h). Day D's auction prices are public at 12:00 of D.
+#  - fc_load   : day-ahead load forecast, due two hours before the day-ahead exchange closes (SMARD manual 04/2026).
+#  - fc_solar / fc_wind_onshore: due only "by 18:00 of the previous day", vintage at 12:00 unknown -> upper bound only.
+DAYD = ["price_dayD"]
+FAMILIES = {
+    "safe": CALENDAR + ["fc_load"] + DAYD,               # noon-safe (primary result)
+    "allfc": CALENDAR + DAYAHEAD_FC + DAYD,              # + wind/solar forecasts (upper bound)
+}
+FUTURE = FAMILIES["allfc"]
+# 2025 is split: Jan-Aug for early stopping / model selection, Sep-Dec only for fitting the conformal band widening.
+SPLITS = {"train": ("2019-01-01", "2024-12-31"), "val": ("2025-01-01", "2025-08-31"),
+          "cal": ("2025-09-01", "2025-12-31"), "test": ("2026-01-01", None)}
+
+
+def run_name(model: str, weather: bool, family: str, tag: str = "", seed: int = 0) -> str:
+    """Single naming scheme for checkpoints, predictions and logs (used by train.py and run_experiments.py)."""
+    return f"{model}{'_weather' if weather else ''}_{family}{('_' + tag) if tag else ''}_s{seed}"
+
+
+def add_derived(df: pd.DataFrame) -> pd.DataFrame:
+    """Columns computed from the dataset itself (no new information): price_dayD = price 24 h earlier."""
+    df = df.copy()
+    df["price_dayD"] = df["price"].shift(24)
+    return df
 
 
 def load_dataset(path=None) -> pd.DataFrame:
-    return pd.read_csv(path or ROOT / "data" / "dataset_hourly.csv", index_col=0, parse_dates=True)
+    return add_derived(pd.read_csv(path or ROOT / "data" / "dataset_hourly.csv", index_col=0, parse_dates=True))
 
 
 def split_frame(df: pd.DataFrame, name: str) -> pd.DataFrame:
@@ -81,10 +102,13 @@ def prepare(df: pd.DataFrame, features: list[str] | None = None, future: list[st
     features = list(features or BASE)
     future = list(future or [])
     cols = features + [c for c in future if c not in features]
-    df = df.copy()
+    df = add_derived(df) if "price_dayD" not in df else df.copy()
     fc = [c for c in DAYAHEAD_FC if c in df]
-    df[fc] = df[fc].interpolate(limit=48, limit_direction="both")  # a few multi-day holes in 2022-23 (train only)
+    df[fc] = df[fc].ffill(limit=48)  # fc_load has a few holes (<= 45 h) in 2022-23; forward fill uses past values only
     scaler = StandardScaler().fit(split_frame(df, "train")[cols].to_numpy())
+    dead = [c for c, v in zip(cols, scaler.var_) if v < 1e-12]
+    if dead:
+        raise ValueError(f"constant input column(s) on the training data: {dead}")
     scaled = pd.DataFrame(scaler.transform(df[cols].to_numpy()), index=df.index, columns=cols)
     tcols = [cols.index(t) for t in TARGETS]
     fcols = [cols.index(c) for c in future]
@@ -102,10 +126,18 @@ def prepare(df: pd.DataFrame, features: list[str] | None = None, future: list[st
     return out, scaler
 
 
-def inverse_targets(Y: np.ndarray, scaler: StandardScaler, features: list[str]) -> np.ndarray:
-    """Scaled (..., 2) target values (or quantiles) back to ct/kWh and MWh."""
-    out = np.empty_like(Y)
-    for k, t in enumerate(TARGETS):
-        j = features.index(t)
-        out[..., k] = Y[..., k] * scaler.scale_[j] + scaler.mean_[j]
-    return out
+def daylight_mask(df: pd.DataFrame, starts: pd.DatetimeIndex, threshold: float = 100.0) -> np.ndarray:
+    """(N, 24) bool: target hour is 'daylight' if the TRAINING-period mean solar of its (month, hour) exceeds
+    `threshold` MWh. Uses training data only, so the mask does not depend on the scored values."""
+    tr = split_frame(df, "train")["solar"]
+    clim = tr.groupby([tr.index.month, tr.index.hour]).mean()
+    hours = starts.values[:, None] + np.arange(HORIZON) * np.timedelta64(1, "h")
+    idx = pd.DatetimeIndex(hours.ravel())
+    vals = clim.reindex(list(zip(idx.month, idx.hour))).to_numpy()
+    return (vals > threshold).reshape(len(starts), HORIZON)
+
+
+def truth(df: pd.DataFrame, starts: pd.DatetimeIndex) -> np.ndarray:
+    """(N, 24, 2) raw target values (price ct/kWh, solar MWh) of the target days; used for scoring instead of the
+    float32 scaled-and-back targets, so night solar is exactly 0."""
+    return np.stack([df.loc[t:t + pd.Timedelta(hours=HORIZON - 1), TARGETS].to_numpy(dtype=np.float64) for t in starts])
